@@ -47,14 +47,32 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.ui.theme.*
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.zIndex
 
 class MainActivity : ComponentActivity() {
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
     enableEdgeToEdge()
     setContent {
-      MyApplicationTheme {
-        SuqoonApp()
+      val context = LocalContext.current
+      val prefs = remember { context.getSharedPreferences("suqoon_prefs", Context.MODE_PRIVATE) }
+      var isDark by remember { mutableStateOf(prefs.getBoolean("dark_theme_enabled", false)) }
+
+      LaunchedEffect(isDark) {
+        ThemeConfig.isDarkTheme = isDark
+      }
+
+      MyApplicationTheme(darkTheme = isDark) {
+        SuqoonApp(
+          isDarkTheme = isDark,
+          onThemeToggle = {
+            val newValue = !isDark
+            isDark = newValue
+            prefs.edit().putBoolean("dark_theme_enabled", newValue).apply()
+          }
+        )
       }
     }
   }
@@ -62,9 +80,13 @@ class MainActivity : ComponentActivity() {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SuqoonApp() {
+fun SuqoonApp(
+  isDarkTheme: Boolean = false,
+  onThemeToggle: () -> Unit = {}
+) {
   val context = LocalContext.current
   val prefs = remember { context.getSharedPreferences("suqoon_prefs", Context.MODE_PRIVATE) }
+  val coroutineScope = rememberCoroutineScope()
 
   var currentTab by remember { 
     mutableStateOf(prefs.getInt("current_tab", 0)) 
@@ -77,7 +99,9 @@ fun SuqoonApp() {
       listOf(
         prefs.getBoolean("quest_checked_0", false),
         prefs.getBoolean("quest_checked_1", false),
-        prefs.getBoolean("quest_checked_2", false)
+        prefs.getBoolean("quest_checked_2", false),
+        prefs.getBoolean("quest_checked_3", false),
+        prefs.getBoolean("quest_checked_4", false)
       )
     )
   }
@@ -86,7 +110,9 @@ fun SuqoonApp() {
       listOf(
         prefs.getString("quest_desc_0", "") ?: "",
         prefs.getString("quest_desc_1", "") ?: "",
-        prefs.getString("quest_desc_2", "") ?: ""
+        prefs.getString("quest_desc_2", "") ?: "",
+        prefs.getString("quest_desc_3", "") ?: "",
+        prefs.getString("quest_desc_4", "") ?: ""
       )
     )
   }
@@ -95,10 +121,26 @@ fun SuqoonApp() {
       listOf(
         prefs.getBoolean("quest_photo_0", false),
         prefs.getBoolean("quest_photo_1", false),
-        prefs.getBoolean("quest_photo_2", false)
+        prefs.getBoolean("quest_photo_2", false),
+        prefs.getBoolean("quest_photo_3", false),
+        prefs.getBoolean("quest_photo_4", false)
       )
     )
   }
+  
+  var aiQuestTitle1 by remember {
+    mutableStateOf(prefs.getString("ai_quest_title_1", "✨ AI Boardgame Battle") ?: "✨ AI Boardgame Battle")
+  }
+  var aiQuestSubtitle1 by remember {
+    mutableStateOf(prefs.getString("ai_quest_subtitle_1", "Enjoy offline gameplay with Dad to ease Work Stress.") ?: "Enjoy offline gameplay with Dad to ease Work Stress.")
+  }
+  var aiQuestTitle2 by remember {
+    mutableStateOf(prefs.getString("ai_quest_title_2", "✨ AI Dinner Prep Assistant") ?: "✨ AI Dinner Prep Assistant")
+  }
+  var aiQuestSubtitle2 by remember {
+    mutableStateOf(prefs.getString("ai_quest_subtitle_2", "Help Mom with device-free cooking prep to unwind.") ?: "Help Mom with device-free cooking prep to unwind.")
+  }
+  var aiQuestsLoading by remember { mutableStateOf(false) }
   var screenTime by remember { 
     mutableStateOf(prefs.getFloat("screen_time", 7.5f)) 
   }
@@ -114,6 +156,16 @@ fun SuqoonApp() {
     mutableStateOf(prefs.getFloat("screen_time_goal", 6.0f)) 
   }
 
+  var activeToastMessage by remember { mutableStateOf<String?>(null) }
+  var activeToastType by remember { mutableStateOf("success") }
+
+  LaunchedEffect(activeToastMessage) {
+    if (activeToastMessage != null) {
+      delay(3500)
+      activeToastMessage = null
+    }
+  }
+
   // Persist states reactively to SharedPreferences
   LaunchedEffect(currentTab) {
     prefs.edit().putInt("current_tab", currentTab).apply()
@@ -126,6 +178,8 @@ fun SuqoonApp() {
       .putBoolean("quest_checked_0", questsChecked.getOrElse(0) { false })
       .putBoolean("quest_checked_1", questsChecked.getOrElse(1) { false })
       .putBoolean("quest_checked_2", questsChecked.getOrElse(2) { false })
+      .putBoolean("quest_checked_3", questsChecked.getOrElse(3) { false })
+      .putBoolean("quest_checked_4", questsChecked.getOrElse(4) { false })
       .apply()
   }
   LaunchedEffect(questDescriptions) {
@@ -133,6 +187,8 @@ fun SuqoonApp() {
       .putString("quest_desc_0", questDescriptions.getOrElse(0) { "" })
       .putString("quest_desc_1", questDescriptions.getOrElse(1) { "" })
       .putString("quest_desc_2", questDescriptions.getOrElse(2) { "" })
+      .putString("quest_desc_3", questDescriptions.getOrElse(3) { "" })
+      .putString("quest_desc_4", questDescriptions.getOrElse(4) { "" })
       .apply()
   }
   LaunchedEffect(questPhotosSnapped) {
@@ -140,6 +196,8 @@ fun SuqoonApp() {
       .putBoolean("quest_photo_0", questPhotosSnapped.getOrElse(0) { false })
       .putBoolean("quest_photo_1", questPhotosSnapped.getOrElse(1) { false })
       .putBoolean("quest_photo_2", questPhotosSnapped.getOrElse(2) { false })
+      .putBoolean("quest_photo_3", questPhotosSnapped.getOrElse(3) { false })
+      .putBoolean("quest_photo_4", questPhotosSnapped.getOrElse(4) { false })
       .apply()
   }
   LaunchedEffect(screenTime) {
@@ -254,12 +312,18 @@ fun SuqoonApp() {
               sleepLog = sleepLog,
               onSleepLogChange = { sleepLog = it },
               screenTimeGoal = screenTimeGoal,
-              onScreenTimeGoalChange = { screenTimeGoal = it }
+              onScreenTimeGoalChange = { screenTimeGoal = it },
+              isDarkTheme = isDarkTheme,
+              onThemeToggle = onThemeToggle
             )
             1 -> FamilyHarmonyView(
               currentUserDisplayName = userName,
               currentUserMood = selectedMood ?: "Tired",
-              currentUserScreenTime = screenTime
+              currentUserScreenTime = screenTime,
+              onTriggerToast = { message, type ->
+                activeToastMessage = message
+                activeToastType = type
+              }
             )
             2 -> ReconnectionQuestsView(
               questsChecked = questsChecked,
@@ -277,6 +341,16 @@ fun SuqoonApp() {
                 val newPhotos = questPhotosSnapped.toMutableList()
                 newPhotos[index] = true
                 questPhotosSnapped = newPhotos
+
+                val questTitle = when (index) {
+                  0 -> "Solo Box Breathing"
+                  1 -> "Evening Family Stroll"
+                  2 -> "Cook Together"
+                  3 -> aiQuestTitle1
+                  else -> aiQuestTitle2
+                }
+                activeToastMessage = "🎉 Quest Completed: $questTitle!"
+                activeToastType = "goal"
               },
               onQuestReset = { index ->
                 val newChecked = questsChecked.toMutableList()
@@ -290,6 +364,67 @@ fun SuqoonApp() {
                 val newPhotos = questPhotosSnapped.toMutableList()
                 newPhotos[index] = false
                 questPhotosSnapped = newPhotos
+              },
+              aiQuestTitle1 = aiQuestTitle1,
+              aiQuestSubtitle1 = aiQuestSubtitle1,
+              aiQuestTitle2 = aiQuestTitle2,
+              aiQuestSubtitle2 = aiQuestSubtitle2,
+              aiLoading = aiQuestsLoading,
+              onGenerateAIQuests = { onSuccess ->
+                if (!aiQuestsLoading) {
+                  aiQuestsLoading = true
+                  coroutineScope.launch {
+                    val result = GeminiService.getAIQuests(
+                      userName = userName,
+                      screenTime = screenTime,
+                      sleepLog = sleepLog,
+                      screenTimeGoal = screenTimeGoal,
+                      mood = selectedMood,
+                      familyStress = prefs.getFloat("ai_family_stress_level", 5f).toInt()
+                    )
+                    val t1 = result["title1"] ?: "✨ AI Boardgame Battle"
+                    val s1 = result["subtitle1"] ?: "Enjoy offline gameplay with Dad to ease Work Stress."
+                    val t2 = result["title2"] ?: "✨ AI Dinner Prep Assistant"
+                    val s2 = result["subtitle2"] ?: "Help Mom with device-free cooking prep to unwind."
+                    
+                    aiQuestTitle1 = t1
+                    aiQuestSubtitle1 = s1
+                    aiQuestTitle2 = t2
+                    aiQuestSubtitle2 = s2
+                    
+                    prefs.edit()
+                      .putString("ai_quest_title_1", t1)
+                      .putString("ai_quest_subtitle_1", s1)
+                      .putString("ai_quest_title_2", t2)
+                      .putString("ai_quest_subtitle_2", s2)
+                      .apply()
+                      
+                    // Reset checked state for index 3 and 4 as new quests are loaded
+                    val newChecked = questsChecked.toMutableList()
+                    if (newChecked.size > 4) {
+                      newChecked[3] = false
+                      newChecked[4] = false
+                    }
+                    questsChecked = newChecked
+                    
+                    val newDesc = questDescriptions.toMutableList()
+                    if (newDesc.size > 4) {
+                      newDesc[3] = ""
+                      newDesc[4] = ""
+                    }
+                    questDescriptions = newDesc
+
+                    val newPhotos = questPhotosSnapped.toMutableList()
+                    if (newPhotos.size > 4) {
+                      newPhotos[3] = false
+                      newPhotos[4] = false
+                    }
+                    questPhotosSnapped = newPhotos
+
+                    aiQuestsLoading = false
+                    onSuccess()
+                  }
+                }
               }
             )
           }
@@ -334,6 +469,97 @@ fun SuqoonApp() {
         onClose = { showAccountPage = false }
       )
     }
+
+    // Elegant, custom-designed premium top-toast notification alert
+    AnimatedVisibility(
+      visible = activeToastMessage != null,
+      enter = slideInVertically(initialOffsetY = { -it }) + fadeIn(),
+      exit = slideOutVertically(targetOffsetY = { -it }) + fadeOut(),
+      modifier = Modifier
+        .align(Alignment.TopCenter)
+        .padding(top = 44.dp)
+        .padding(horizontal = 24.dp)
+        .zIndex(99f)
+    ) {
+      activeToastMessage?.let { msg ->
+        Card(
+          colors = CardDefaults.cardColors(containerColor = OffWhite),
+          shape = RoundedCornerShape(20.dp),
+          modifier = Modifier
+            .fillMaxWidth()
+            .shadow(12.dp, RoundedCornerShape(20.dp))
+            .border(
+              width = 1.5.dp,
+              color = when (activeToastType) {
+                "sync" -> AccentGreen
+                "goal" -> AccentBlue
+                else -> AccentBlue
+              },
+              shape = RoundedCornerShape(20.dp)
+            )
+            .testTag("custom_toast_notification")
+        ) {
+          Row(
+            modifier = Modifier.padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+          ) {
+            Box(
+              modifier = Modifier
+                .size(36.dp)
+                .clip(CircleShape)
+                .background(
+                  color = when (activeToastType) {
+                    "sync" -> AccentGreenSoft
+                    "goal" -> AccentBlueSoft
+                    else -> AccentBlueSoft
+                  }
+                ),
+              contentAlignment = Alignment.Center
+            ) {
+              Icon(
+                imageVector = when (activeToastType) {
+                  "sync" -> Icons.Default.Sync
+                  "goal" -> Icons.Default.Spa
+                  else -> Icons.Default.CheckCircle
+                },
+                contentDescription = null,
+                tint = when (activeToastType) {
+                  "sync" -> AccentGreen
+                  "goal" -> AccentBlue
+                  else -> AccentBlue
+                },
+                modifier = Modifier.size(18.dp)
+              )
+            }
+            Column(modifier = Modifier.weight(1f)) {
+              Text(
+                text = when (activeToastType) {
+                  "sync" -> "Household Balance Synchronized"
+                  "goal" -> "Wellbeing Goal Achieved!"
+                  else -> "Notification"
+                },
+                style = MaterialTheme.typography.labelMedium.copy(
+                  fontWeight = FontWeight.Bold,
+                  color = DarkSlate,
+                  fontSize = 11.sp,
+                  letterSpacing = 0.5.sp
+                )
+              )
+              Spacer(modifier = Modifier.height(2.dp))
+              Text(
+                text = msg.replace("🔄 ", "").replace("🎉 ", ""),
+                style = MaterialTheme.typography.bodySmall.copy(
+                  color = DarkSlate,
+                  fontSize = 13.sp,
+                  lineHeight = 17.sp
+                )
+              )
+            }
+          }
+        }
+      }
+    }
   }
 }
 
@@ -349,7 +575,9 @@ fun HomeDashboardView(
   sleepLog: Float,
   onSleepLogChange: (Float) -> Unit,
   screenTimeGoal: Float,
-  onScreenTimeGoalChange: (Float) -> Unit
+  onScreenTimeGoalChange: (Float) -> Unit,
+  isDarkTheme: Boolean = false,
+  onThemeToggle: () -> Unit = {}
 ) {
   val context = LocalContext.current
   val prefs = remember { context.getSharedPreferences("suqoon_prefs", Context.MODE_PRIVATE) }
@@ -447,28 +675,49 @@ fun HomeDashboardView(
             )
           )
         }
-        // Rounded profile placeholder avatar
-        Box(
-          modifier = Modifier
-            .size(48.dp)
-            .clip(CircleShape)
-            .border(2.dp, Color.White, CircleShape)
-            .background(AccentBlueSoft)
-            .clickable { onAccountClick() }
-            .testTag("account_profile_button"),
-          contentAlignment = Alignment.Center
+        // Theme toggle button and Rounded profile placeholder avatar row
+        Row(
+          verticalAlignment = Alignment.CenterVertically,
+          horizontalArrangement = Arrangement.spacedBy(10.dp)
         ) {
+          IconButton(
+            onClick = onThemeToggle,
+            modifier = Modifier
+              .size(44.dp)
+              .shadow(2.dp, CircleShape)
+              .background(OffWhite, CircleShape)
+              .testTag("theme_toggle_button")
+          ) {
+            Icon(
+              imageVector = if (isDarkTheme) Icons.Default.LightMode else Icons.Default.DarkMode,
+              contentDescription = "Toggle Theme Mode",
+              tint = if (isDarkTheme) Color(0xFFF59E0B) else DarkSlate,
+              modifier = Modifier.size(20.dp)
+            )
+          }
+
           Box(
             modifier = Modifier
-              .fillMaxSize()
-              .background(AccentBlue.copy(alpha = 0.2f))
-          )
-          Text(
-            text = if (userName.isNotEmpty()) userName.take(1).uppercase() else "S",
-            color = AccentBlue,
-            fontWeight = FontWeight.Medium,
-            fontSize = 18.sp
-          )
+              .size(48.dp)
+              .clip(CircleShape)
+              .border(2.dp, OffWhite, CircleShape)
+              .background(AccentBlueSoft)
+              .clickable { onAccountClick() }
+              .testTag("account_profile_button"),
+            contentAlignment = Alignment.Center
+          ) {
+            Box(
+              modifier = Modifier
+                .fillMaxSize()
+                .background(AccentBlue.copy(alpha = 0.2f))
+            )
+            Text(
+              text = if (userName.isNotEmpty()) userName.take(1).uppercase() else "S",
+              color = AccentBlue,
+              fontWeight = FontWeight.Medium,
+              fontSize = 18.sp
+            )
+          }
         }
       }
     }
@@ -1126,7 +1375,8 @@ fun MetricItemCard(
 fun FamilyHarmonyView(
   currentUserDisplayName: String,
   currentUserMood: String,
-  currentUserScreenTime: Float
+  currentUserScreenTime: Float,
+  onTriggerToast: (String, String) -> Unit
 ) {
   val context = LocalContext.current
   val prefs = remember { context.getSharedPreferences("suqoon_prefs", Context.MODE_PRIVATE) }
@@ -1149,24 +1399,77 @@ fun FamilyHarmonyView(
       .padding(horizontal = 20.dp),
     verticalArrangement = Arrangement.spacedBy(18.dp)
   ) {
-    // Header
+    // Header with sync button
     item {
+      var isSyncing by remember { mutableStateOf(false) }
+      val rotation = remember { Animatable(0f) }
+      val syncScope = rememberCoroutineScope()
+
       Spacer(modifier = Modifier.height(16.dp))
-      Text(
-        text = "Family Harmony Index",
-        style = MaterialTheme.typography.titleLarge.copy(
-          fontWeight = FontWeight.Bold,
-          fontSize = 24.sp,
-          color = DarkSlate
-        )
-      )
-      Text(
-        text = "Tracking collective screen balance seamlessly",
-        style = MaterialTheme.typography.bodyMedium.copy(
-          color = MutedGray,
-          fontSize = 14.sp
-        )
-      )
+      Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+      ) {
+        Column(modifier = Modifier.weight(1f)) {
+          Text(
+            text = "Family Harmony Index",
+            style = MaterialTheme.typography.titleLarge.copy(
+              fontWeight = FontWeight.Bold,
+              fontSize = 24.sp,
+              color = DarkSlate
+            )
+          )
+          Text(
+            text = "Tracking collective screen balance seamlessly",
+            style = MaterialTheme.typography.bodyMedium.copy(
+              color = MutedGray,
+              fontSize = 14.sp
+            )
+          )
+        }
+
+        // Beautiful family balance sync button
+        IconButton(
+          onClick = {
+            if (!isSyncing) {
+              isSyncing = true
+              syncScope.launch {
+                rotation.animateTo(
+                  targetValue = rotation.value + 360f,
+                  animationSpec = infiniteRepeatable(
+                    animation = tween(1000, easing = LinearEasing),
+                    repeatMode = RepeatMode.Restart
+                  )
+                )
+              }
+              syncScope.launch {
+                delay(1800) // Simulated delay
+                isSyncing = false
+                rotation.snapTo(0f)
+                onTriggerToast(
+                  "🔄 Family screen balance synchronized with 3 household members!",
+                  "sync"
+                )
+              }
+            }
+          },
+          modifier = Modifier
+            .shadow(2.dp, CircleShape)
+            .background(Color.White, CircleShape)
+            .size(44.dp)
+            .testTag("family_sync_button")
+        ) {
+          Icon(
+            imageVector = Icons.Default.Sync,
+            contentDescription = "Sync Family Balance",
+            tint = AccentGreen,
+            modifier = Modifier
+              .size(22.dp)
+              .graphicsLayer(rotationZ = rotation.value)
+          )
+        }
+      }
     }
 
     // Double Gauge with text overlays
@@ -1759,7 +2062,7 @@ fun QuestPolaroidPreview(
                 .align(Alignment.Center)
             )
           }
-          else -> {
+          2 -> {
             Canvas(modifier = Modifier.fillMaxSize()) {
               drawRect(
                 brush = Brush.linearGradient(
@@ -1792,6 +2095,48 @@ fun QuestPolaroidPreview(
             }
             Icon(
               imageVector = Icons.Filled.Restaurant,
+              contentDescription = null,
+              tint = Color.White,
+              modifier = Modifier
+                .size(36.dp)
+                .align(Alignment.Center)
+            )
+          }
+          3 -> {
+            Canvas(modifier = Modifier.fillMaxSize()) {
+              drawRect(
+                brush = Brush.radialGradient(
+                  colors = listOf(Color(0xFFD4E4FF), Color(0xFF7AAFFF), Color(0xFF1E5BBF))
+                )
+              )
+              drawCircle(
+                color = Color.White.copy(alpha = 0.2f),
+                radius = size.minDimension / 3.0f
+              )
+            }
+            Icon(
+              imageVector = Icons.Filled.AutoAwesome,
+              contentDescription = null,
+              tint = Color.White,
+              modifier = Modifier
+                .size(36.dp)
+                .align(Alignment.Center)
+            )
+          }
+          else -> {
+            Canvas(modifier = Modifier.fillMaxSize()) {
+              drawRect(
+                brush = Brush.radialGradient(
+                  colors = listOf(Color(0xFFFFE9D4), Color(0xFFFFB37A), Color(0xFFBF5E1E))
+                )
+              )
+              drawCircle(
+                color = Color.White.copy(alpha = 0.2f),
+                radius = size.minDimension / 3.0f
+              )
+            }
+            Icon(
+              imageVector = Icons.Filled.AutoAwesome,
               contentDescription = null,
               tint = Color.White,
               modifier = Modifier
@@ -1835,7 +2180,9 @@ fun QuestPolaroidPreview(
         text = when (questIndex) {
           0 -> "🧘 Breathing • Selfie"
           1 -> "🚶 Sunset Trail • GPS"
-          else -> "🍲 Kitchen • Cook Savor"
+          2 -> "🍲 Kitchen • Cook Savor"
+          3 -> "✨ AI Spark • Quest"
+          else -> "✨ AI Mindful • Quest"
         },
         color = Color.DarkGray,
         fontWeight = FontWeight.Bold,
@@ -2056,9 +2403,53 @@ fun ReconnectionQuestsView(
   questDescriptions: List<String>,
   questPhotosSnapped: List<Boolean>,
   onQuestComplete: (Int, String) -> Unit,
-  onQuestReset: (Int) -> Unit
+  onQuestReset: (Int) -> Unit,
+  aiQuestTitle1: String,
+  aiQuestSubtitle1: String,
+  aiQuestTitle2: String,
+  aiQuestSubtitle2: String,
+  aiLoading: Boolean,
+  onGenerateAIQuests: (onSuccess: () -> Unit) -> Unit
 ) {
   var activeVerificationQuestIndex by remember { mutableStateOf<Int?>(null) }
+
+  val quests = listOf(
+    QuestData(
+      "🧘 Solo Box Breathing",
+      "3-minute fast focus reset. +15 Mood Score",
+      Icons.Filled.Spa,
+      AccentBlue,
+      "quest_item_0"
+    ),
+    QuestData(
+      "🚶 Evening Family Stroll",
+      "20-minute offline neighborhood walk. +20 Harmony",
+      Icons.AutoMirrored.Filled.DirectionsWalk,
+      AmberBurnout,
+      "quest_item_1"
+    ),
+    QuestData(
+      "🍲 Cook Together",
+      "Collaborative device-free kitchen takeover. +30 Family Bond",
+      Icons.Filled.Restaurant,
+      AccentGreen,
+      "quest_item_2"
+    ),
+    QuestData(
+      aiQuestTitle1,
+      aiQuestSubtitle1,
+      Icons.Filled.AutoAwesome,
+      AccentBlue,
+      "quest_item_3"
+    ),
+    QuestData(
+      aiQuestTitle2,
+      aiQuestSubtitle2,
+      Icons.Filled.AutoAwesome,
+      AccentGreen,
+      "quest_item_4"
+    )
+  )
 
   LazyColumn(
     modifier = Modifier
@@ -2085,36 +2476,92 @@ fun ReconnectionQuestsView(
       )
     }
 
+    // WELLBEING PROGRESS BAR & STATUS BADGE CARD FOR QUESTS
+    item {
+      val checkedCount = questsChecked.count { it }
+      val totalQuests = quests.size
+      val progressPercentage = checkedCount.toFloat() / totalQuests
+      
+      val (badgeText, badgeColor, badgeBg) = when (checkedCount) {
+        0 -> Triple("Beginner", MutedGray, SoftNeutralBackground)
+        in 1..2 -> Triple("Balanced", AccentBlue, AccentBlueSoft)
+        in 3..4 -> Triple("Mindful Creator", AmberBurnout, AmberBurnout.copy(alpha = 0.12f))
+        else -> Triple("Zen Master", AccentGreen, AccentGreenSoft)
+      }
+
+      Card(
+        modifier = Modifier
+          .fillMaxWidth()
+          .shadow(1.dp, RoundedCornerShape(24.dp))
+          .testTag("reconnection_progress_card"),
+        colors = CardDefaults.cardColors(containerColor = Color.White),
+        shape = RoundedCornerShape(24.dp)
+      ) {
+        Column(modifier = Modifier.padding(20.dp)) {
+          Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+          ) {
+            Column {
+              Text(
+                text = "Quest Completion Progress",
+                style = MaterialTheme.typography.titleMedium.copy(
+                  fontWeight = FontWeight.Bold,
+                  color = DarkSlate,
+                  fontSize = 16.sp
+                )
+              )
+              Text(
+                text = "$checkedCount of $totalQuests completed today",
+                style = MaterialTheme.typography.bodySmall.copy(
+                  color = MutedGray,
+                  fontSize = 12.sp
+                )
+              )
+            }
+            // Status Badge
+            Box(
+              modifier = Modifier
+                .clip(RoundedCornerShape(12.dp))
+                .background(badgeBg)
+                .padding(horizontal = 10.dp, vertical = 4.dp)
+            ) {
+              Text(
+                text = badgeText.uppercase(),
+                style = MaterialTheme.typography.bodySmall.copy(
+                  fontWeight = FontWeight.Black,
+                  color = badgeColor,
+                  fontSize = 10.sp,
+                  letterSpacing = 0.5.sp
+                )
+              )
+            }
+          }
+
+          Spacer(modifier = Modifier.height(16.dp))
+
+          // Progress Bar
+          LinearProgressIndicator(
+            progress = { progressPercentage },
+            modifier = Modifier
+              .fillMaxWidth()
+              .height(10.dp)
+              .clip(RoundedCornerShape(10.dp))
+              .testTag("quests_progress_bar"),
+            color = badgeColor,
+            trackColor = Color.LightGray.copy(alpha = 0.25f)
+          )
+        }
+      }
+    }
+
     item {
       Column(
         verticalArrangement = Arrangement.spacedBy(12.dp)
       ) {
-        val quests = listOf(
-          QuestData(
-            "🧘 Solo Box Breathing",
-            "3-minute fast focus reset. +15 Mood Score",
-            Icons.Filled.Spa,
-            AccentBlue,
-            "quest_item_0"
-          ),
-          QuestData(
-            "🚶 Evening Family Stroll",
-            "20-minute offline neighborhood walk. +20 Harmony",
-            Icons.AutoMirrored.Filled.DirectionsWalk,
-            AmberBurnout,
-            "quest_item_1"
-          ),
-          QuestData(
-            "🍲 Cook Together",
-            "Collaborative device-free kitchen takeover. +30 Family Bond",
-            Icons.Filled.Restaurant,
-            AccentGreen,
-            "quest_item_2"
-          )
-        )
-
         quests.forEachIndexed { index, quest ->
-          val isChecked = questsChecked[index]
+          val isChecked = questsChecked.getOrElse(index) { false }
           Card(
             modifier = Modifier
               .fillMaxWidth()
@@ -2240,7 +2687,7 @@ fun ReconnectionQuestsView(
                       }
                       Spacer(modifier = Modifier.height(4.dp))
                       Text(
-                        text = questDescriptions[index].ifEmpty { "Logged successfully offline." },
+                        text = questDescriptions.getOrElse(index) { "Logged successfully offline." }.ifEmpty { "Logged successfully offline." },
                         color = DarkSlate,
                         style = MaterialTheme.typography.bodySmall.copy(
                           fontStyle = androidx.compose.ui.text.font.FontStyle.Italic,
@@ -2256,34 +2703,113 @@ fun ReconnectionQuestsView(
           }
         }
       }
+    }
+
+    // AI CUSTOM QUEST GENERATION INTERACTIVE CARD
+    item {
+      Card(
+        modifier = Modifier
+          .fillMaxWidth()
+          .shadow(1.dp, RoundedCornerShape(24.dp))
+          .testTag("ai_reconnection_config_card"),
+        colors = CardDefaults.cardColors(containerColor = SoftNeutralBackground.copy(alpha = 0.45f)),
+        border = BorderStroke(1.dp, Color.LightGray.copy(alpha = 0.3f)),
+        shape = RoundedCornerShape(24.dp)
+      ) {
+        Column(
+          modifier = Modifier.padding(20.dp),
+          horizontalAlignment = Alignment.CenterHorizontally,
+          verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+          Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+          ) {
+            Icon(
+              imageVector = Icons.Filled.AutoAwesome,
+              contentDescription = null,
+              tint = AccentBlue,
+              modifier = Modifier.size(24.dp)
+            )
+            Text(
+              text = "Personalized AI Quests",
+              style = MaterialTheme.typography.titleMedium.copy(
+                fontWeight = FontWeight.Bold,
+                color = DarkSlate,
+                fontSize = 16.sp
+              )
+            )
+          }
+
+          Text(
+            text = "Generate reconnection exercises dynamically mapped to your mood, screen time, and family stress levels for tailored family bonding.",
+            style = MaterialTheme.typography.bodySmall.copy(
+              color = MutedGray,
+              textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+              fontSize = 12.sp,
+              lineHeight = 17.sp
+            )
+          )
+
+          Spacer(modifier = Modifier.height(4.dp))
+
+          Button(
+            onClick = {
+              onGenerateAIQuests {
+                // Success callback
+              }
+            },
+            enabled = !aiLoading,
+            modifier = Modifier
+              .fillMaxWidth()
+              .height(48.dp)
+              .testTag("generate_ai_quests_button"),
+            colors = ButtonDefaults.buttonColors(
+              containerColor = AccentBlue,
+              contentColor = Color.White
+            ),
+            shape = RoundedCornerShape(14.dp)
+          ) {
+            if (aiLoading) {
+              CircularProgressIndicator(
+                modifier = Modifier.size(20.dp),
+                color = Color.White,
+                strokeWidth = 2.dp
+              )
+            } else {
+              Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+              ) {
+                Icon(
+                  imageVector = Icons.Filled.AutoAwesome,
+                  contentDescription = null,
+                  modifier = Modifier.size(16.dp)
+                )
+                Text(
+                  text = "Generate Custom AI Quests",
+                  style = MaterialTheme.typography.labelLarge.copy(
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 14.sp
+                  )
+                )
+              }
+            }
+          }
+        }
+      }
       Spacer(modifier = Modifier.height(24.dp))
     }
   }
 
   activeVerificationQuestIndex?.let { index ->
-    val quest = when (index) {
-      0 -> QuestData(
-        "🧘 Solo Box Breathing",
-        "3-minute fast focus reset. +15 Mood Score",
-        Icons.Filled.Spa,
-        AccentBlue,
-        "quest_item_0"
-      )
-      1 -> QuestData(
-        "🚶 Evening Family Stroll",
-        "20-minute offline neighborhood walk. +20 Harmony",
-        Icons.AutoMirrored.Filled.DirectionsWalk,
-        AmberBurnout,
-        "quest_item_1"
-      )
-      else -> QuestData(
-        "🍲 Cook Together",
-        "Collaborative device-free kitchen takeover. +30 Family Bond",
-        Icons.Filled.Restaurant,
-        AccentGreen,
-        "quest_item_2"
-      )
-    }
+    val quest = quests.getOrNull(index) ?: QuestData(
+      "Reconnection Quest",
+      "Offline family activity",
+      Icons.Filled.AutoAwesome,
+      AccentBlue,
+      "quest_item_unknown"
+    )
     QuestVerificationDialog(
       questIndex = index,
       quest = quest,
@@ -3599,26 +4125,41 @@ fun ManualScreenTimeLogCard(
       val progressColor = if (isOverGoal) SoftRed else AccentBlue
       val progressBg = if (isOverGoal) SoftRed.copy(alpha = 0.15f) else AccentBlueSoft
 
+      val (screentimeBadgeText, screentimeBadgeColor, screentimeBadgeBg) = when {
+        screenTime <= screenTimeGoal * 0.5f -> Triple("Healthy Balance", AccentGreen, AccentGreenSoft)
+        screenTime <= screenTimeGoal -> Triple("Nearing Limit", AmberBurnout, AmberBurnout.copy(alpha = 0.12f))
+        else -> Triple("Limit Exceeded", SoftRed, SoftRed.copy(alpha = 0.12f))
+      }
+
       Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
       ) {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
           Icon(
             imageVector = if (isOverGoal) Icons.Default.Warning else Icons.Default.CheckCircle,
             contentDescription = null,
             tint = progressColor,
             modifier = Modifier.size(16.dp)
           )
-          Text(
-            text = if (isOverGoal) "Goal Exceeded" else "Screentime Status",
-            style = MaterialTheme.typography.bodyMedium.copy(
-              fontWeight = FontWeight.Bold,
-              color = DarkSlate,
-              fontSize = 13.sp
+          // Material 3 Status Badge
+          Box(
+            modifier = Modifier
+              .clip(RoundedCornerShape(8.dp))
+              .background(screentimeBadgeBg)
+              .padding(horizontal = 8.dp, vertical = 2.dp)
+          ) {
+            Text(
+              text = screentimeBadgeText.uppercase(),
+              style = MaterialTheme.typography.bodySmall.copy(
+                fontWeight = FontWeight.Black,
+                color = screentimeBadgeColor,
+                fontSize = 8.5.sp,
+                letterSpacing = 0.5.sp
+              )
             )
-          )
+          }
         }
         Text(
           text = "${(percentage * 100).toInt()}%",

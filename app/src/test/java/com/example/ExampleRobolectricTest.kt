@@ -2,7 +2,10 @@ package com.example
 
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
+import com.example.ui.theme.ThemeConfig
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -17,5 +20,26 @@ class ExampleRobolectricTest {
     val context = ApplicationProvider.getApplicationContext<Context>()
     val appName = context.getString(R.string.app_name)
     assertEquals("Suqoon+", appName)
+  }
+
+  @Test
+  fun `theme config toggle updates state`() {
+    ThemeConfig.isDarkTheme = false
+    assertFalse(ThemeConfig.isDarkTheme)
+
+    ThemeConfig.isDarkTheme = true
+    assertTrue(ThemeConfig.isDarkTheme)
+  }
+
+  @Test
+  fun `shared preferences persist theme mode`() {
+    val context = ApplicationProvider.getApplicationContext<Context>()
+    val prefs = context.getSharedPreferences("suqoon_prefs", Context.MODE_PRIVATE)
+
+    // Save dark theme
+    prefs.edit().putBoolean("dark_theme_enabled", true).apply()
+
+    val isDarkEnabled = prefs.getBoolean("dark_theme_enabled", false)
+    assertTrue(isDarkEnabled)
   }
 }

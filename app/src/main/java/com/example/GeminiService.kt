@@ -292,4 +292,119 @@ object GeminiService {
             return@withContext "API Configuration Error: Please configure either GROQ_API_KEY or GEMINI_API_KEY in your Secrets panel under Settings."
         }
     }
+
+    suspend fun getAIQuests(
+        userName: String,
+        screenTime: Float,
+        sleepLog: Float,
+        screenTimeGoal: Float,
+        mood: String?,
+        familyStress: Int
+    ): Map<String, String> = withContext(Dispatchers.IO) {
+        val groqApiKey = try { BuildConfig.GROQ_API_KEY } catch (e: Exception) { "" }
+        val geminiApiKey = try { BuildConfig.GEMINI_API_KEY } catch (e: Exception) { "" }
+
+        val isGroqEnabled = isApiKeyConfigured(groqApiKey, "MY_GROQ_API_KEY")
+        val isGeminiEnabled = isApiKeyConfigured(geminiApiKey, "MY_GEMINI_API_KEY")
+
+        val prompt = """
+            You are Suqoon AI, an empathetic senior digital wellness and family relationship companion.
+            Based on the following personal and household metrics, generate exactly two highly relevant, creative, screen-free "Reconnection Quests" for this user and their family.
+            
+            Metrics:
+            - User Name: $userName
+            - Today's Screen Time: $screenTime hours (Goal Limit: $screenTimeGoal)
+            - Last Night's Sleep Logged: $sleepLog hours
+            - Current Mood: ${mood ?: "Not reported"}
+            - Family Stress Index: $familyStress out of 10
+            - Household State: Mom (Working Parent, 4.0 hrs screen, mood: Okay), Dad (Work Mode, 5.0 hrs screen, mood: Happy)
+            
+            Please deliver custom, specific offline bonding quest recommendations.
+            The response must follow this EXACT structure so our mobile app can parse the keys correctly:
+            QUEST_1_TITLE: [Catchy quest title starting with an emoji, max 25 characters]
+            QUEST_1_SUBTITLE: [Specific actionable screen-free instruction referencing a family member, max 50 characters]
+            QUEST_2_TITLE: [Catchy quest title starting with an emoji, max 25 characters]
+            QUEST_2_SUBTITLE: [Specific actionable screen-free instruction referencing a family member, max 50 characters]
+            
+            Do not include any other text, greetings, code fences, markdown asterisks, or surrounding layout. Just output exactly those four lines.
+        """.trimIndent()
+
+        var responseText = ""
+
+        if (isGroqEnabled) {
+            Log.d(TAG, "Calling Groq API for AI quests...")
+            val messages = listOf(
+                GroqMessage(role = "system", content = "You are Suqoon AI, a precise offline habit generator."),
+                GroqMessage(role = "user", content = prompt)
+            )
+            val request = GroqRequest(
+                model = DEFAULT_GROQ_MODEL,
+                messages = messages,
+                temperature = 0.7f
+            )
+            try {
+                val response = RetrofitClient.groqService.generateChatCompletion(
+                    authorization = "Bearer $groqApiKey",
+                    request = request
+                )
+                responseText = response.choices?.firstOrNull()?.message?.content ?: ""
+            } catch (e: Exception) {
+                Log.e(TAG, "Error calling Groq API", e)
+            }
+        } else if (isGeminiEnabled) {
+            Log.d(TAG, "Calling Gemini API for AI quests...")
+            val request = GeminiRequest(
+                contents = listOf(Content(parts = listOf(Part(text = prompt)))),
+                systemInstruction = Content(parts = listOf(Part(text = "You are Suqoon AI, a precise offline habit generator.")))
+            )
+            try {
+                val response = RetrofitClient.geminiService.generateContent(
+                    model = DEFAULT_GEMINI_MODEL,
+                    apiKey = geminiApiKey,
+                    request = request
+                )
+                responseText = response.candidates?.firstOrNull()?.content?.parts?.firstOrNull()?.text ?: ""
+            } catch (e: Exception) {
+                Log.e(TAG, "Error calling Gemini API", e)
+            }
+        }
+
+        val result = mutableMapOf<String, String>()
+        if (responseText.isNotBlank()) {
+            val lines = responseText.split("\n")
+            for (line in lines) {
+                val trimmed = line.trim()
+                when {
+                    trimmed.startsWith("QUEST_1_TITLE:") -> {
+                        result["title1"] = trimmed.substringAfter("QUEST_1_TITLE:").trim()
+                    }
+                    trimmed.startsWith("QUEST_1_SUBTITLE:") -> {
+                        result["subtitle1"] = trimmed.substringAfter("QUEST_1_SUBTITLE:").trim()
+                    }
+                    trimmed.startsWith("QUEST_2_TITLE:") -> {
+                        result["title2"] = trimmed.substringAfter("QUEST_2_TITLE:").trim()
+                    }
+                    trimmed.startsWith("QUEST_2_SUBTITLE:") -> {
+                        result["subtitle2"] = trimmed.substringAfter("QUEST_2_SUBTITLE:").trim()
+                    }
+                }
+            }
+        }
+
+        // Apply fallback if any key is missing
+        if (!result.containsKey("title1") || result["title1"]!!.isBlank()) {
+            result["title1"] = "✨ AI Boardgame Battle"
+        }
+        if (!result.containsKey("subtitle1") || result["subtitle1"]!!.isBlank()) {
+            result["subtitle1"] = "Enjoy offline gameplay with Dad to ease Work Stress."
+        }
+        if (!result.containsKey("title2") || result["title2"]!!.isBlank()) {
+            result["title2"] = "✨ AI Dinner Prep Assistant"
+        }
+        if (!result.containsKey("subtitle2") || result["subtitle2"]!!.isBlank()) {
+            result["subtitle2"] = "Help Mom with device-free cooking prep to unwind."
+        }
+
+        result
+    }
 }
