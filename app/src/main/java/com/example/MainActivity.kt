@@ -46,6 +46,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.ui.theme.*
+import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
   override fun onCreate(savedInstanceState: Bundle?) {
@@ -350,6 +351,22 @@ fun HomeDashboardView(
   screenTimeGoal: Float,
   onScreenTimeGoalChange: (Float) -> Unit
 ) {
+  val context = LocalContext.current
+  val prefs = remember { context.getSharedPreferences("suqoon_prefs", Context.MODE_PRIVATE) }
+  var aiRecommendations by remember {
+    mutableStateOf(prefs.getString("ai_detox_recommendations", null))
+  }
+  var aiLoading by remember { mutableStateOf(false) }
+  val scope = rememberCoroutineScope()
+
+  LaunchedEffect(aiRecommendations) {
+    if (aiRecommendations != null) {
+      prefs.edit().putString("ai_detox_recommendations", aiRecommendations).apply()
+    } else {
+      prefs.edit().remove("ai_detox_recommendations").apply()
+    }
+  }
+
   val infiniteTransition = rememberInfiniteTransition(label = "PulseWarningDot")
   val pulseAlpha by infiniteTransition.animateFloat(
     initialValue = 0.3f,
@@ -759,6 +776,205 @@ fun HomeDashboardView(
         weeklyScores = weeklyScores,
         weeklyDays = weeklyDays
       )
+    }
+
+    // AI Detox & Wellness Companion Suggestions Card
+    item {
+      Box(
+        modifier = Modifier
+          .fillMaxWidth()
+          .shadow(
+            elevation = 3.dp,
+            shape = RoundedCornerShape(32.dp),
+            ambientColor = Color.Black.copy(alpha = 0.04f),
+            spotColor = Color.Black.copy(alpha = 0.04f)
+          )
+          .clip(RoundedCornerShape(32.dp))
+          .background(Color(0xFFFBF9FF))
+          .border(1.dp, Color(0xFFEADBFF), RoundedCornerShape(32.dp))
+          .padding(20.dp)
+          .testTag("ai_detox_companion_card")
+      ) {
+        Column {
+          Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+          ) {
+            Column(modifier = Modifier.weight(1f)) {
+              Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+              ) {
+                Icon(
+                  imageVector = Icons.Filled.Spa,
+                  contentDescription = "AI Companion Icon",
+                  tint = Color(0xFF8B5CF6),
+                  modifier = Modifier.size(18.dp)
+                )
+                Text(
+                  text = "SUQOON AI",
+                  style = MaterialTheme.typography.labelSmall.copy(
+                    fontWeight = FontWeight.Bold,
+                    color = Color(0xFF7C3AED),
+                    fontSize = 11.sp,
+                    letterSpacing = 1.sp
+                  )
+                )
+              }
+              Spacer(modifier = Modifier.height(2.dp))
+              Text(
+                text = "Personal Detox Coach",
+                style = MaterialTheme.typography.titleMedium.copy(
+                  fontWeight = FontWeight.Bold,
+                  color = DarkSlate,
+                  fontSize = 17.sp
+                )
+              )
+            }
+
+            Button(
+              onClick = {
+                if (!aiLoading) {
+                  aiLoading = true
+                  scope.launch {
+                    val result = GeminiService.getDetoxRecommendations(
+                      userName = userName,
+                      screenTime = screenTime,
+                      sleepLog = sleepLog,
+                      screenTimeGoal = screenTimeGoal,
+                      mood = selectedMood
+                    )
+                    aiRecommendations = result
+                    aiLoading = false
+                  }
+                }
+              },
+              enabled = !aiLoading,
+              shape = RoundedCornerShape(50),
+              colors = ButtonDefaults.buttonColors(
+                containerColor = Color(0xFF8B5CF6),
+                contentColor = Color.White,
+                disabledContainerColor = Color(0xFFD8B4FE),
+                disabledContentColor = Color.White
+              ),
+              contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
+              modifier = Modifier
+                .height(34.dp)
+                .testTag("get_ai_tips_button")
+            ) {
+              Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
+              ) {
+                if (aiLoading) {
+                  CircularProgressIndicator(
+                    color = Color.White,
+                    modifier = Modifier.size(12.dp),
+                    strokeWidth = 1.5.dp
+                  )
+                  Text(text = "Analyzing...", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                } else {
+                  Icon(
+                    imageVector = Icons.Filled.AutoAwesome,
+                    contentDescription = null,
+                    tint = Color.White,
+                    modifier = Modifier.size(12.dp)
+                  )
+                  Text(
+                    text = if (aiRecommendations != null) "Refresh Tips" else "Get Coached",
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold
+                  )
+                }
+              }
+            }
+          }
+
+          Spacer(modifier = Modifier.height(12.dp))
+
+          Box(
+            modifier = Modifier
+              .fillMaxWidth()
+              .clip(RoundedCornerShape(20.dp))
+              .background(Color.White)
+              .border(1.dp, Color(0xFFF3E8FF), RoundedCornerShape(20.dp))
+              .padding(16.dp)
+          ) {
+            Column {
+              if (aiRecommendations == null) {
+                Text(
+                  text = "Connect with Suqoon AI to evaluate your screen time ($screenTime hrs) and sleep duration ($sleepLog hrs) metrics. Our AI counselor will prompt 3 personalized physical replacement suggestions and detox habits for you.",
+                  style = MaterialTheme.typography.bodyMedium.copy(
+                    color = MutedGray,
+                    fontSize = 13.5.sp,
+                    lineHeight = 19.sp
+                  ),
+                  modifier = Modifier.testTag("ai_tips_initial_message")
+                )
+              } else {
+                Text(
+                  text = aiRecommendations ?: "",
+                  style = MaterialTheme.typography.bodyMedium.copy(
+                    color = DarkSlate,
+                    fontSize = 13.5.sp,
+                    lineHeight = 20.sp
+                  ),
+                  modifier = Modifier.testTag("ai_recommendations_content")
+                )
+              }
+
+              Spacer(modifier = Modifier.height(12.dp))
+              Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+              ) {
+                Box(
+                  modifier = Modifier
+                    .clip(RoundedCornerShape(6.dp))
+                    .background(Color(0xFFEEF2F6))
+                    .padding(horizontal = 6.dp, vertical = 3.dp)
+                ) {
+                  Text(
+                    text = "Usage: $screenTime h",
+                    fontSize = 10.sp,
+                    color = MutedGray,
+                    fontWeight = FontWeight.Bold
+                  )
+                }
+                Box(
+                  modifier = Modifier
+                    .clip(RoundedCornerShape(6.dp))
+                    .background(Color(0xFFEEF2F6))
+                    .padding(horizontal = 6.dp, vertical = 3.dp)
+                ) {
+                  Text(
+                    text = "Sleep: $sleepLog h",
+                    fontSize = 10.sp,
+                    color = MutedGray,
+                    fontWeight = FontWeight.Bold
+                  )
+                }
+                if (!selectedMood.isNullOrBlank()) {
+                  Box(
+                    modifier = Modifier
+                      .clip(RoundedCornerShape(6.dp))
+                      .background(Color(0xFFEEF2F6))
+                      .padding(horizontal = 6.dp, vertical = 3.dp)
+                  ) {
+                    Text(
+                      text = "Mood: $selectedMood",
+                      fontSize = 10.sp,
+                      color = MutedGray,
+                      fontWeight = FontWeight.Bold
+                    )
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
     }
 
     // Family Harmony Highlight Snippet Widget
