@@ -14,8 +14,10 @@ import retrofit2.http.POST
 import retrofit2.http.Body
 import retrofit2.http.Query
 import retrofit2.http.Path
+import retrofit2.http.Header
 import android.util.Log
 
+// Gemini Request/Response Models
 @JsonClass(generateAdapter = true)
 data class GeminiRequest(
     val contents: List<Content>,
@@ -59,8 +61,41 @@ interface GeminiApiService {
     ): GeminiResponse
 }
 
+// Groq Request/Response Models
+@JsonClass(generateAdapter = true)
+data class GroqRequest(
+    val model: String,
+    val messages: List<GroqMessage>,
+    val temperature: Float? = null
+)
+
+@JsonClass(generateAdapter = true)
+data class GroqMessage(
+    val role: String,
+    val content: String
+)
+
+@JsonClass(generateAdapter = true)
+data class GroqResponse(
+    val choices: List<GroqChoice>?
+)
+
+@JsonClass(generateAdapter = true)
+data class GroqChoice(
+    val message: GroqMessage?
+)
+
+interface GroqApiService {
+    @POST("chat/completions")
+    suspend fun generateChatCompletion(
+        @Header("Authorization") authorization: String,
+        @Body request: GroqRequest
+    ): GroqResponse
+}
+
 object RetrofitClient {
-    private const val BASE_URL = "https://generativelanguage.googleapis.com/"
+    private const val GEMINI_BASE_URL = "https://generativelanguage.googleapis.com/"
+    private const val GROQ_BASE_URL = "https://api.groq.com/openai/v1/"
 
     private val okHttpClient = OkHttpClient.Builder()
         .connectTimeout(60, TimeUnit.SECONDS)
@@ -72,19 +107,33 @@ object RetrofitClient {
         .addLast(KotlinJsonAdapterFactory())
         .build()
 
-    val service: GeminiApiService by lazy {
+    val geminiService: GeminiApiService by lazy {
         Retrofit.Builder()
-            .baseUrl(BASE_URL)
+            .baseUrl(GEMINI_BASE_URL)
             .client(okHttpClient)
             .addConverterFactory(MoshiConverterFactory.create(moshi))
             .build()
             .create(GeminiApiService::class.java)
     }
+
+    val groqService: GroqApiService by lazy {
+        Retrofit.Builder()
+            .baseUrl(GROQ_BASE_URL)
+            .client(okHttpClient)
+            .addConverterFactory(MoshiConverterFactory.create(moshi))
+            .build()
+            .create(GroqApiService::class.java)
+    }
 }
 
 object GeminiService {
     private const val TAG = "GeminiService"
-    private const val DEFAULT_MODEL = "gemini-3.5-flash"
+    private const val DEFAULT_GEMINI_MODEL = "gemini-3.5-flash"
+    private const val DEFAULT_GROQ_MODEL = "llama-3.3-70b-versatile"
+
+    private fun isApiKeyConfigured(key: String, placeholder: String): Boolean {
+        return key.isNotEmpty() && key != placeholder
+    }
 
     suspend fun getDetoxRecommendations(
         userName: String,
@@ -93,11 +142,11 @@ object GeminiService {
         screenTimeGoal: Float,
         mood: String?
     ): String = withContext(Dispatchers.IO) {
-        val apiKey = BuildConfig.GEMINI_API_KEY
-        if (apiKey.isEmpty() || apiKey == "MY_GEMINI_API_KEY") {
-            Log.e(TAG, "Gemini API key is not configured!")
-            return@withContext "API Configuration Error: Please configure a valid GEMINI_API_KEY in your Secrets panel under Settings."
-        }
+        val groqApiKey = try { BuildConfig.GROQ_API_KEY } catch (e: Exception) { "" }
+        val geminiApiKey = try { BuildConfig.GEMINI_API_KEY } catch (e: Exception) { "" }
+
+        val isGroqEnabled = isApiKeyConfigured(groqApiKey, "MY_GROQ_API_KEY")
+        val isGeminiEnabled = isApiKeyConfigured(geminiApiKey, "MY_GEMINI_API_KEY")
 
         val prompt = """
             Generate personalized digital detox recommendations and screen time/balance offline activity suggestions.
@@ -112,26 +161,56 @@ object GeminiService {
             Format the output beautifully with clear bullet points using emojis. Be friendly, empathetic, and encouraging. Focus on local/physical replacement activities. Avoid vague suggestions, make them highly specific to their state (e.g. if they slept low, suggest sleep hygiene tips; if screen time is high, suggest immediate eye strain reliefs and green-space strolls). Keep the response concise, under 200 words.
         """.trimIndent()
 
-        val request = GeminiRequest(
-            contents = listOf(Content(parts = listOf(Part(text = prompt)))),
-            systemInstruction = Content(parts = listOf(Part(text = "You are Suqoon AI, an empathetic digital wellness companion.")))
-        )
-
-        try {
-            val response = RetrofitClient.service.generateContent(
-                model = DEFAULT_MODEL,
-                apiKey = apiKey,
-                request = request
+        if (isGroqEnabled) {
+            Log.d(TAG, "Calling Groq API for detox recommendations...")
+            val messages = listOf(
+                GroqMessage(role = "system", content = "You are Suqoon AI, an empathetic digital wellness companion."),
+                GroqMessage(role = "user", content = prompt)
             )
-            val responseText = response.candidates?.firstOrNull()?.content?.parts?.firstOrNull()?.text
-            if (!responseText.isNullOrBlank()) {
-                responseText
-            } else {
-                "No recommendations found. Please adjust your logs and try again!"
+            val request = GroqRequest(
+                model = DEFAULT_GROQ_MODEL,
+                messages = messages,
+                temperature = 0.7f
+            )
+            try {
+                val response = RetrofitClient.groqService.generateChatCompletion(
+                    authorization = "Bearer $groqApiKey",
+                    request = request
+                )
+                val responseText = response.choices?.firstOrNull()?.message?.content
+                if (!responseText.isNullOrBlank()) {
+                    return@withContext responseText
+                } else {
+                    return@withContext "No recommendations returned from Groq. Please try again!"
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error calling Groq API", e)
+                return@withContext "Error connecting to Groq. Please verify your GROQ_API_KEY in the Secrets panel. Details: ${e.localizedMessage}"
             }
-        } catch (e: Exception) {
-            Log.e(TAG, "Error calling Gemini API", e)
-            "Could not load AI suggestions right now. Make sure you have configured a valid GEMINI_API_KEY in the Secrets panel, then try again! Error details: ${e.localizedMessage}"
+        } else if (isGeminiEnabled) {
+            Log.d(TAG, "Calling Gemini API for detox recommendations...")
+            val request = GeminiRequest(
+                contents = listOf(Content(parts = listOf(Part(text = prompt)))),
+                systemInstruction = Content(parts = listOf(Part(text = "You are Suqoon AI, an empathetic digital wellness companion.")))
+            )
+            try {
+                val response = RetrofitClient.geminiService.generateContent(
+                    model = DEFAULT_GEMINI_MODEL,
+                    apiKey = geminiApiKey,
+                    request = request
+                )
+                val responseText = response.candidates?.firstOrNull()?.content?.parts?.firstOrNull()?.text
+                if (!responseText.isNullOrBlank()) {
+                    return@withContext responseText
+                } else {
+                    return@withContext "No recommendations found. Please adjust your logs and try again!"
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error calling Gemini API", e)
+                return@withContext "Could not load AI suggestions right now. Make sure you have configured a valid GEMINI_API_KEY in your Secrets panel under Settings."
+            }
+        } else {
+            return@withContext "API Configuration Error: Please configure either GROQ_API_KEY or GEMINI_API_KEY in your Secrets panel under Settings."
         }
     }
 
@@ -140,11 +219,11 @@ object GeminiService {
         stressLevel: Int,
         currentTime: String
     ): String = withContext(Dispatchers.IO) {
-        val apiKey = BuildConfig.GEMINI_API_KEY
-        if (apiKey.isEmpty() || apiKey == "MY_GEMINI_API_KEY") {
-            Log.e(TAG, "Gemini API key is not configured!")
-            return@withContext "API Configuration Error: Please configure a valid GEMINI_API_KEY in your Secrets panel under Settings."
-        }
+        val groqApiKey = try { BuildConfig.GROQ_API_KEY } catch (e: Exception) { "" }
+        val geminiApiKey = try { BuildConfig.GEMINI_API_KEY } catch (e: Exception) { "" }
+
+        val isGroqEnabled = isApiKeyConfigured(groqApiKey, "MY_GROQ_API_KEY")
+        val isGeminiEnabled = isApiKeyConfigured(geminiApiKey, "MY_GEMINI_API_KEY")
 
         val prompt = """
             Generate personalized, warm, family-oriented screen-free activities to build connection and relieve stress.
@@ -161,26 +240,56 @@ object GeminiService {
             Format the response beautifully in Markdown with clear bullet points, encouraging emojis, and clear indicators showing why these choices suit their stress factor at this hour. Be highly specific. Keep the entire response under 220 words.
         """.trimIndent()
 
-        val request = GeminiRequest(
-            contents = listOf(Content(parts = listOf(Part(text = prompt)))),
-            systemInstruction = Content(parts = listOf(Part(text = "You are Suqoon AI, an empathetic senior family relation and digital mindfulness coach.")))
-        )
-
-        try {
-            val response = RetrofitClient.service.generateContent(
-                model = DEFAULT_MODEL,
-                apiKey = apiKey,
-                request = request
+        if (isGroqEnabled) {
+            Log.d(TAG, "Calling Groq API for family recommendations...")
+            val messages = listOf(
+                GroqMessage(role = "system", content = "You are Suqoon AI, an empathetic senior family relation and digital mindfulness coach."),
+                GroqMessage(role = "user", content = prompt)
             )
-            val responseText = response.candidates?.firstOrNull()?.content?.parts?.firstOrNull()?.text
-            if (!responseText.isNullOrBlank()) {
-                responseText
-            } else {
-                "No recommendations found. Please try again!"
+            val request = GroqRequest(
+                model = DEFAULT_GROQ_MODEL,
+                messages = messages,
+                temperature = 0.7f
+            )
+            try {
+                val response = RetrofitClient.groqService.generateChatCompletion(
+                    authorization = "Bearer $groqApiKey",
+                    request = request
+                )
+                val responseText = response.choices?.firstOrNull()?.message?.content
+                if (!responseText.isNullOrBlank()) {
+                    return@withContext responseText
+                } else {
+                    return@withContext "No recommendations returned from Groq. Please try again!"
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error calling Groq API", e)
+                return@withContext "Error connecting to Groq. Please verify your GROQ_API_KEY in the Secrets panel. Details: ${e.localizedMessage}"
             }
-        } catch (e: java.lang.Exception) {
-            Log.e(TAG, "Error in getFamilyRecommendations", e)
-            "Could not load AI family suggestions right now. Ensure you have configured a valid GEMINI_API_KEY in the Secrets panel, then try again! Error: ${e.localizedMessage}"
+        } else if (isGeminiEnabled) {
+            Log.d(TAG, "Calling Gemini API for family recommendations...")
+            val request = GeminiRequest(
+                contents = listOf(Content(parts = listOf(Part(text = prompt)))),
+                systemInstruction = Content(parts = listOf(Part(text = "You are Suqoon AI, an empathetic senior family relation and digital mindfulness coach.")))
+            )
+            try {
+                val response = RetrofitClient.geminiService.generateContent(
+                    model = DEFAULT_GEMINI_MODEL,
+                    apiKey = geminiApiKey,
+                    request = request
+                )
+                val responseText = response.candidates?.firstOrNull()?.content?.parts?.firstOrNull()?.text
+                if (!responseText.isNullOrBlank()) {
+                    return@withContext responseText
+                } else {
+                    return@withContext "No recommendations found. Please try again!"
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error calling Gemini API", e)
+                return@withContext "Could not load AI family suggestions right now. Ensure you have configured a valid GEMINI_API_KEY in your Secrets panel under Settings."
+            }
+        } else {
+            return@withContext "API Configuration Error: Please configure either GROQ_API_KEY or GEMINI_API_KEY in your Secrets panel under Settings."
         }
     }
 }

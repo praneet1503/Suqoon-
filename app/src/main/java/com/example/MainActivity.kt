@@ -587,7 +587,7 @@ fun HomeDashboardView(
               )
             }
             Text(
-              text = "${screenTime}h",
+              text = "${"%.1f".format(screenTime)}h",
               style = MaterialTheme.typography.bodyMedium.copy(
                 fontWeight = FontWeight.Bold,
                 color = AccentBlue,
@@ -631,7 +631,7 @@ fun HomeDashboardView(
               )
             }
             Text(
-              text = "${sleepLog}h",
+              text = "${"%.1f".format(sleepLog)}h",
               style = MaterialTheme.typography.bodyMedium.copy(
                 fontWeight = FontWeight.Bold,
                 color = AccentGreen,
@@ -673,13 +673,13 @@ fun HomeDashboardView(
       ) {
         MetricItemCard(
           modifier = Modifier.weight(1f),
-          value = "${screenTime}h",
+          value = "${"%.1f".format(screenTime)}h",
           title = "Screen",
           valueColor = AccentBlue
         )
         MetricItemCard(
           modifier = Modifier.weight(1f),
-          value = "${sleepLog}h",
+          value = "${"%.1f".format(sleepLog)}h",
           title = "Sleep",
           valueColor = AccentGreen
         )
@@ -904,7 +904,7 @@ fun HomeDashboardView(
             Column {
               if (aiRecommendations == null) {
                 Text(
-                  text = "Connect with Suqoon AI to evaluate your screen time ($screenTime hrs) and sleep duration ($sleepLog hrs) metrics. Our AI counselor will prompt 3 personalized physical replacement suggestions and detox habits for you.",
+                  text = "Connect with Suqoon AI to evaluate your screen time (${"%.1f".format(screenTime)} hrs) and sleep duration (${"%.1f".format(sleepLog)} hrs) metrics. Our AI counselor will prompt 3 personalized physical replacement suggestions and detox habits for you.",
                   style = MaterialTheme.typography.bodyMedium.copy(
                     color = MutedGray,
                     fontSize = 13.5.sp,
@@ -936,7 +936,7 @@ fun HomeDashboardView(
                     .padding(horizontal = 6.dp, vertical = 3.dp)
                 ) {
                   Text(
-                    text = "Usage: $screenTime h",
+                    text = "Usage: ${"%.1f".format(screenTime)} h",
                     fontSize = 10.sp,
                     color = MutedGray,
                     fontWeight = FontWeight.Bold
@@ -949,7 +949,7 @@ fun HomeDashboardView(
                     .padding(horizontal = 6.dp, vertical = 3.dp)
                 ) {
                   Text(
-                    text = "Sleep: $sleepLog h",
+                    text = "Sleep: ${"%.1f".format(sleepLog)} h",
                     fontSize = 10.sp,
                     color = MutedGray,
                     fontWeight = FontWeight.Bold
@@ -3283,7 +3283,7 @@ fun ManualScreenTimeLogCard(
   onScreenTimeGoalChange: (Float) -> Unit
 ) {
   var manualInputText by remember { mutableStateOf("") }
-  var goalInputText by remember { mutableStateOf(screenTimeGoal.toString()) }
+  var goalInputText by remember { mutableStateOf("%.1f".format(screenTimeGoal)) }
   var isEditingGoal by remember { mutableStateOf(false) }
   var errorMessage by remember { mutableStateOf<String?>(null) }
   var hasShownLimitExceededToast by rememberSaveable { mutableStateOf(false) }
@@ -3307,7 +3307,7 @@ fun ManualScreenTimeLogCard(
   // Update localized text if external changes occur
   LaunchedEffect(screenTimeGoal) {
     if (!isEditingGoal) {
-      goalInputText = screenTimeGoal.toString()
+      goalInputText = "%.1f".format(screenTimeGoal)
     }
   }
 
@@ -3500,7 +3500,7 @@ fun ManualScreenTimeLogCard(
             manualInputText = it
             errorMessage = null 
           },
-          placeholder = { Text("${screenTime} hrs", color = MutedGray, fontSize = 13.sp) },
+          placeholder = { Text("${"%.1f".format(screenTime)} hrs", color = MutedGray, fontSize = 13.sp) },
           label = { Text("Log Screentime (hrs)", fontSize = 11.sp) },
           singleLine = true,
           keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
