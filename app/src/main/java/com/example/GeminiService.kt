@@ -134,4 +134,53 @@ object GeminiService {
             "Could not load AI suggestions right now. Make sure you have configured a valid GEMINI_API_KEY in the Secrets panel, then try again! Error details: ${e.localizedMessage}"
         }
     }
+
+    suspend fun getFamilyRecommendations(
+        userName: String,
+        stressLevel: Int,
+        currentTime: String
+    ): String = withContext(Dispatchers.IO) {
+        val apiKey = BuildConfig.GEMINI_API_KEY
+        if (apiKey.isEmpty() || apiKey == "MY_GEMINI_API_KEY") {
+            Log.e(TAG, "Gemini API key is not configured!")
+            return@withContext "API Configuration Error: Please configure a valid GEMINI_API_KEY in your Secrets panel under Settings."
+        }
+
+        val prompt = """
+            Generate personalized, warm, family-oriented screen-free activities to build connection and relieve stress.
+            Here is the current state for family connection:
+            - User Name: $userName
+            - User's Stress Level: $stressLevel out of 10 (where 10 is extremely stressed)
+            - Current Local Time: $currentTime
+            
+            Please deliver 3 distinct, physical, screen-free family or partner bonding activity recommendations tailored to this time of day and stress level.
+            - If it is late at night, suggest tranquil/cozy indoor activities (e.g. ambient lighting conversations, safe stretches, quiet memory books, acoustic music sessions).
+            - If stress levels are very high, suggest ultra-low effort, highly relaxing techniques that do not demand major physical stamina.
+            - If it is daytime, propose light, stimulating physical replacement outdoor/indoor collaborative games, courtyard walks, or creative baking tasks.
+            
+            Format the response beautifully in Markdown with clear bullet points, encouraging emojis, and clear indicators showing why these choices suit their stress factor at this hour. Be highly specific. Keep the entire response under 220 words.
+        """.trimIndent()
+
+        val request = GeminiRequest(
+            contents = listOf(Content(parts = listOf(Part(text = prompt)))),
+            systemInstruction = Content(parts = listOf(Part(text = "You are Suqoon AI, an empathetic senior family relation and digital mindfulness coach.")))
+        )
+
+        try {
+            val response = RetrofitClient.service.generateContent(
+                model = DEFAULT_MODEL,
+                apiKey = apiKey,
+                request = request
+            )
+            val responseText = response.candidates?.firstOrNull()?.content?.parts?.firstOrNull()?.text
+            if (!responseText.isNullOrBlank()) {
+                responseText
+            } else {
+                "No recommendations found. Please try again!"
+            }
+        } catch (e: java.lang.Exception) {
+            Log.e(TAG, "Error in getFamilyRecommendations", e)
+            "Could not load AI family suggestions right now. Ensure you have configured a valid GEMINI_API_KEY in the Secrets panel, then try again! Error: ${e.localizedMessage}"
+        }
+    }
 }

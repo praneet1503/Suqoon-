@@ -1128,6 +1128,21 @@ fun FamilyHarmonyView(
   currentUserMood: String,
   currentUserScreenTime: Float
 ) {
+  val context = LocalContext.current
+  val prefs = remember { context.getSharedPreferences("suqoon_prefs", Context.MODE_PRIVATE) }
+
+  var stressLevel by remember {
+    mutableStateOf(prefs.getFloat("ai_family_stress_level", 5f))
+  }
+  var aiRecommendations by remember {
+    mutableStateOf(prefs.getString("ai_family_recommendations", null))
+  }
+  var selectedTimeMode by remember {
+    mutableStateOf(prefs.getString("ai_family_time_mode", "Current System Time") ?: "Current System Time")
+  }
+  var aiLoading by remember { mutableStateOf(false) }
+  val scope = rememberCoroutineScope()
+
   LazyColumn(
     modifier = Modifier
       .fillMaxSize()
@@ -1210,6 +1225,283 @@ fun FamilyHarmonyView(
                   fontSize = 12.sp
                 )
               )
+            }
+          }
+        }
+      }
+    }
+
+    // AI Family Harmonizer Recommendations Card
+    item {
+      Card(
+        modifier = Modifier
+          .fillMaxWidth()
+          .shadow(2.dp, RoundedCornerShape(28.dp))
+          .clip(RoundedCornerShape(28.dp))
+          .background(Color(0xFFF7F9FC))
+          .border(1.dp, Color(0xFFDCE2EC), RoundedCornerShape(28.dp))
+          .testTag("ai_family_harmonizer_card"),
+        colors = CardDefaults.cardColors(containerColor = Color.White)
+      ) {
+        Column(modifier = Modifier.padding(20.dp)) {
+          // Card Title Block
+          Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+          ) {
+            Column(modifier = Modifier.weight(1f)) {
+              Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+              ) {
+                Icon(
+                  imageVector = Icons.Filled.AutoAwesome,
+                  contentDescription = "AI Icon",
+                  tint = AccentGreen,
+                  modifier = Modifier.size(16.dp)
+                )
+                Text(
+                  text = "AI FAMILY HARMONIZER",
+                  style = MaterialTheme.typography.labelSmall.copy(
+                    fontWeight = FontWeight.Bold,
+                    color = AccentGreen,
+                    fontSize = 11.sp,
+                    letterSpacing = 1.sp
+                  )
+                )
+              }
+              Spacer(modifier = Modifier.height(2.dp))
+              Text(
+                text = "Bonding Activity Planner",
+                style = MaterialTheme.typography.titleMedium.copy(
+                  fontWeight = FontWeight.Bold,
+                  color = DarkSlate,
+                  fontSize = 18.sp
+                )
+              )
+            }
+            
+            // Sub-badge for time status
+            val resolvedTime = remember(selectedTimeMode) {
+              if (selectedTimeMode == "Current System Time") {
+                java.text.SimpleDateFormat("hh:mm a", java.util.Locale.getDefault()).format(java.util.Date())
+              } else {
+                selectedTimeMode
+              }
+            }
+            Box(
+              modifier = Modifier
+                .clip(RoundedCornerShape(8.dp))
+                .background(AccentBlueSoft)
+                .padding(horizontal = 8.dp, vertical = 4.dp)
+            ) {
+              Text(
+                text = resolvedTime,
+                color = AccentBlue,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Bold
+              )
+            }
+          }
+
+          Spacer(modifier = Modifier.height(14.dp))
+          Text(
+            text = "Fine-tune your conditions to receive screen-free interactive bonding ideas custom-fitted to your stress metrics at this hour.",
+            style = MaterialTheme.typography.bodySmall.copy(color = MutedGray, fontSize = 12.5.sp, lineHeight = 17.sp)
+          )
+
+          Spacer(modifier = Modifier.height(16.dp))
+
+          // 1. Stress Level Regulator Slider
+          Text(
+            text = "Your Stress Level Indicator:",
+            style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold, color = DarkSlate, fontSize = 13.sp)
+          )
+          Spacer(modifier = Modifier.height(4.dp))
+          Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+          ) {
+            val stressText = when {
+              stressLevel >= 8f -> "🚨 High Stress / Exhausted"
+              stressLevel >= 4f -> "☕ Moderately Stressed"
+              else -> "🍃 Calm & Balanced"
+            }
+            val stressColor = when {
+              stressLevel >= 8f -> SoftRed
+              stressLevel >= 4f -> AmberBurnout
+              else -> AccentGreen
+            }
+            Text(
+              text = stressText,
+              style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold, color = stressColor)
+            )
+            Text(
+              text = "${stressLevel.toInt()}/10",
+              style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.ExtraBold, color = DarkSlate)
+            )
+          }
+          Slider(
+            value = stressLevel,
+            onValueChange = {
+              stressLevel = it
+              prefs.edit().putFloat("ai_family_stress_level", it).apply()
+            },
+            valueRange = 1f..10f,
+            steps = 8,
+            colors = SliderDefaults.colors(
+              thumbColor = AccentBlue,
+              activeTrackColor = AccentBlue,
+              inactiveTrackColor = SoftNeutralBackground
+            ),
+            modifier = Modifier.testTag("ai_family_stress_slider")
+          )
+
+          Spacer(modifier = Modifier.height(12.dp))
+
+          // 2. Time-of-Day Override Selectors (for demo flexibility)
+          Text(
+            text = "Select Time Period:",
+            style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold, color = DarkSlate, fontSize = 13.sp)
+          )
+          Spacer(modifier = Modifier.height(6.dp))
+          Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+          ) {
+            val modes = listOf("Current System Time", "08:00 AM (Morning)", "02:00 PM (Afternoon)", "09:00 PM (Evening)")
+            modes.forEach { mode ->
+              val isSelected = selectedTimeMode == mode
+              val modeColor = if (isSelected) AccentBlue else Color.Transparent
+              val contentColor = if (isSelected) Color.White else MutedGray
+              val borderColor = if (isSelected) AccentBlue else Color(0xFFECEFF3)
+              Box(
+                modifier = Modifier
+                  .weight(1f)
+                  .clip(RoundedCornerShape(8.dp))
+                  .background(if (isSelected) AccentBlue else Color.White)
+                  .border(1.dp, borderColor, RoundedCornerShape(8.dp))
+                  .clickable {
+                    selectedTimeMode = mode
+                    prefs.edit().putString("ai_family_time_mode", mode).apply()
+                  }
+                  .padding(vertical = 5.dp, horizontal = 2.dp),
+                contentAlignment = Alignment.Center
+              ) {
+                Text(
+                  text = mode.replace(" (Morning)", "").replace(" (Afternoon)", "").replace(" (Evening)", "").replace("Current ", ""),
+                  color = contentColor,
+                  fontSize = 10.sp,
+                  fontWeight = FontWeight.Bold,
+                  maxLines = 1,
+                  overflow = TextOverflow.Ellipsis
+                )
+              }
+            }
+          }
+
+          Spacer(modifier = Modifier.height(18.dp))
+
+          // 3. Action Button
+          Button(
+            onClick = {
+              if (!aiLoading) {
+                aiLoading = true
+                scope.launch {
+                  val resolvedTime = if (selectedTimeMode == "Current System Time") {
+                    java.text.SimpleDateFormat("hh:mm a", java.util.Locale.getDefault()).format(java.util.Date())
+                  } else {
+                    selectedTimeMode
+                  }
+                  val result = GeminiService.getFamilyRecommendations(
+                    userName = currentUserDisplayName,
+                    stressLevel = stressLevel.toInt(),
+                    currentTime = resolvedTime
+                  )
+                  aiRecommendations = result
+                  prefs.edit().putString("ai_family_recommendations", result).apply()
+                  aiLoading = false
+                }
+              }
+            },
+            enabled = !aiLoading,
+            modifier = Modifier
+              .fillMaxWidth()
+              .height(44.dp)
+              .testTag("ai_family_request_button"),
+            shape = RoundedCornerShape(12.dp),
+            colors = ButtonDefaults.buttonColors(
+              containerColor = AccentBlue,
+              contentColor = Color.White,
+              disabledContainerColor = AccentBlueSoft,
+              disabledContentColor = AccentBlue
+            )
+          ) {
+            Row(
+              verticalAlignment = Alignment.CenterVertically,
+              horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+              if (aiLoading) {
+                CircularProgressIndicator(
+                  color = Color.White,
+                  modifier = Modifier.size(16.dp),
+                  strokeWidth = 2.dp
+                )
+                Text("Analyzing Household State...", fontSize = 13.sp, fontWeight = FontWeight.Bold)
+              } else {
+                Icon(
+                  imageVector = Icons.Filled.AutoAwesome,
+                  contentDescription = null,
+                  modifier = Modifier.size(16.dp)
+                )
+                Text(
+                  text = if (aiRecommendations != null) "Refresh AI Recommendations" else "Consult AI Harmonizer",
+                  fontSize = 13.sp,
+                  fontWeight = FontWeight.Bold
+                )
+              }
+            }
+          }
+
+          if (aiRecommendations != null || aiLoading) {
+            Spacer(modifier = Modifier.height(16.dp))
+            HorizontalDivider(color = Color(0xFFECEFF3), thickness = 1.dp)
+            Spacer(modifier = Modifier.height(14.dp))
+            
+            Box(
+              modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(16.dp))
+                .background(Color(0xFFF9FAFC))
+                .border(1.dp, Color(0xFFEFF1F5), RoundedCornerShape(16.dp))
+                .padding(16.dp)
+            ) {
+              if (aiLoading) {
+                Column(
+                  modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp),
+                  horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                  Text(
+                    text = "Suqoon AI is matching stress indexes with collective family time gaps...",
+                    fontSize = 12.5.sp,
+                    color = MutedGray,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.padding(horizontal = 8.dp)
+                  )
+                }
+              } else {
+                Text(
+                  text = aiRecommendations ?: "",
+                  style = MaterialTheme.typography.bodyMedium.copy(
+                    color = DarkSlate,
+                    fontSize = 13.5.sp,
+                    lineHeight = 19.5.sp
+                  ),
+                  modifier = Modifier.testTag("ai_family_recommendations_text")
+                )
+              }
             }
           }
         }
