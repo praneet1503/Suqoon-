@@ -1,4 +1,4 @@
-package com.example
+package com.aistudio.suqoonplus.fmlbal
 
 import android.os.Bundle
 import android.content.Context
@@ -45,11 +45,24 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.ui.theme.*
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.zIndex
+import com.example.GeminiService
+import com.example.ui.theme.AccentBlue
+import com.example.ui.theme.AccentBlueSoft
+import com.example.ui.theme.AccentGreen
+import com.example.ui.theme.AccentGreenSoft
+import com.example.ui.theme.AmberBurnout
+import com.example.ui.theme.DarkSlate
+import com.example.ui.theme.LightAmber
+import com.example.ui.theme.MutedGray
+import com.example.ui.theme.MyApplicationTheme
+import com.example.ui.theme.OffWhite
+import com.example.ui.theme.SoftNeutralBackground
+import com.example.ui.theme.SoftRed
+import com.example.ui.theme.ThemeConfig
 
 class MainActivity : ComponentActivity() {
   override fun onCreate(savedInstanceState: Bundle?) {
@@ -374,6 +387,7 @@ fun SuqoonApp(
                 if (!aiQuestsLoading) {
                   aiQuestsLoading = true
                   coroutineScope.launch {
+
                     val result = GeminiService.getAIQuests(
                       userName = userName,
                       screenTime = screenTime,

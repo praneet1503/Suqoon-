@@ -16,6 +16,7 @@ import retrofit2.http.Query
 import retrofit2.http.Path
 import retrofit2.http.Header
 import android.util.Log
+import com.aistudio.suqoonplus.fmlbal.BuildConfig
 
 // Gemini Request/Response Models
 @JsonClass(generateAdapter = true)
