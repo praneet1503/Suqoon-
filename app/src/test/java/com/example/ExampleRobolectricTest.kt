@@ -2,7 +2,8 @@ package com.example
 
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
-import com.example.ui.theme.ThemeConfig
+import com.aistudio.suqoonplus.fmlbal.example.ui.theme.ThemeConfig
+import com.aistudio.suqoonplus.fmlbal.R
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue

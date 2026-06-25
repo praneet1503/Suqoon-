@@ -1,7 +1,6 @@
-package com.example
+package com.aistudio.suqoonplus.fmlbal.example
 
 import com.squareup.moshi.JsonClass
-import com.squareup.moshi.Json
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient

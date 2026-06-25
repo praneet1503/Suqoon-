@@ -8,7 +8,6 @@ import androidx.activity.enableEdgeToEdge
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.*
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
@@ -33,7 +32,6 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
@@ -41,7 +39,6 @@ import androidx.compose.ui.platform.LocalContext
 import android.widget.Toast
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -49,20 +46,20 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.zIndex
-import com.example.GeminiService
-import com.example.ui.theme.AccentBlue
-import com.example.ui.theme.AccentBlueSoft
-import com.example.ui.theme.AccentGreen
-import com.example.ui.theme.AccentGreenSoft
-import com.example.ui.theme.AmberBurnout
-import com.example.ui.theme.DarkSlate
-import com.example.ui.theme.LightAmber
-import com.example.ui.theme.MutedGray
-import com.example.ui.theme.MyApplicationTheme
-import com.example.ui.theme.OffWhite
-import com.example.ui.theme.SoftNeutralBackground
-import com.example.ui.theme.SoftRed
-import com.example.ui.theme.ThemeConfig
+import com.aistudio.suqoonplus.fmlbal.example.GeminiService
+import com.aistudio.suqoonplus.fmlbal.example.ui.theme.AccentBlue
+import com.aistudio.suqoonplus.fmlbal.example.ui.theme.AccentBlueSoft
+import com.aistudio.suqoonplus.fmlbal.example.ui.theme.AccentGreen
+import com.aistudio.suqoonplus.fmlbal.example.ui.theme.AccentGreenSoft
+import com.aistudio.suqoonplus.fmlbal.example.ui.theme.AmberBurnout
+import com.aistudio.suqoonplus.fmlbal.example.ui.theme.DarkSlate
+import com.aistudio.suqoonplus.fmlbal.example.ui.theme.LightAmber
+import com.aistudio.suqoonplus.fmlbal.example.ui.theme.MutedGray
+import com.aistudio.suqoonplus.fmlbal.example.ui.theme.MyApplicationTheme
+import com.aistudio.suqoonplus.fmlbal.example.ui.theme.OffWhite
+import com.aistudio.suqoonplus.fmlbal.example.ui.theme.SoftNeutralBackground
+import com.aistudio.suqoonplus.fmlbal.example.ui.theme.SoftRed
+import com.aistudio.suqoonplus.fmlbal.example.ui.theme.ThemeConfig
 
 class MainActivity : ComponentActivity() {
   override fun onCreate(savedInstanceState: Bundle?) {
@@ -292,6 +289,25 @@ fun SuqoonApp(
             ),
             modifier = Modifier.testTag("quests_tab")
           )
+          NavigationBarItem(
+            selected = currentTab == 3,
+            onClick = { currentTab = 3 },
+            icon = {
+              Icon(
+                imageVector = if (currentTab == 3) Icons.Filled.AutoAwesome else Icons.Outlined.AutoAwesome,
+                contentDescription = "USRA AI"
+              )
+            },
+            label = { Text("USRA AI") },
+            colors = NavigationBarItemDefaults.colors(
+              selectedIconColor = AccentGreen,
+              selectedTextColor = AccentGreen,
+              indicatorColor = AccentGreenSoft,
+              unselectedIconColor = MutedGray,
+              unselectedTextColor = MutedGray
+            ),
+            modifier = Modifier.testTag("usra_ai_tab")
+          )
         }
       },
       containerColor = SoftNeutralBackground
@@ -440,6 +456,9 @@ fun SuqoonApp(
                   }
                 }
               }
+            )
+            3 -> UsraAIChatScreen(
+              modifier = Modifier.fillMaxSize()
             )
           }
         }
@@ -4248,5 +4267,614 @@ fun DeviceRow(
       )
     )
   }
+}
+
+private enum class UsraChatSender {
+  AI,
+  USER
+}
+
+private data class UsraChatMessage(
+  val sender: UsraChatSender,
+  val text: String
+)
+
+@Composable
+fun UsraAIChatScreen(modifier: Modifier = Modifier) {
+  val scope = rememberCoroutineScope()
+  val userName = "Sami"
+
+  var stateOfMindLoggingEnabled by rememberSaveable { mutableStateOf(true) }
+  var screenTimeHours by rememberSaveable { mutableStateOf(7.5f) }
+  var sleepLogHours by rememberSaveable { mutableStateOf(5.5f) }
+  var messageInput by rememberSaveable { mutableStateOf("") }
+  var attachmentCount by rememberSaveable { mutableStateOf(0) }
+  var voiceDictationEnabled by rememberSaveable { mutableStateOf(false) }
+
+  val chatMessages = remember {
+    mutableStateListOf(
+      UsraChatMessage(
+        sender = UsraChatSender.AI,
+        text = "Assalamu alaikum Sami — I’m Usra AI, your family doctor and wellbeing guide. What’s the main concern today?"
+      ),
+      UsraChatMessage(
+        sender = UsraChatSender.USER,
+        text = "I’ve been feeling overwhelmed and I slept late again."
+      ),
+      UsraChatMessage(
+        sender = UsraChatSender.AI,
+        text = "Thanks for telling me. Let’s review your screen time, sleep, and any warning signs together before we decide next steps."
+      )
+    )
+  }
+
+  val overLimitHours = (screenTimeHours - 6f).coerceAtLeast(0f)
+  val highRisk = screenTimeHours >= 7f || sleepLogHours < 6f
+  val warningBackground = when {
+    overLimitHours > 0f -> SoftRed.copy(alpha = 0.16f)
+    highRisk -> LightAmber.copy(alpha = 0.34f)
+    else -> AccentGreenSoft.copy(alpha = 0.35f)
+  }
+  val warningBorder = when {
+    overLimitHours > 0f -> SoftRed.copy(alpha = 0.34f)
+    highRisk -> AmberBurnout.copy(alpha = 0.32f)
+    else -> AccentGreen.copy(alpha = 0.28f)
+  }
+  val warningTextColor = when {
+    overLimitHours > 0f -> Color(0xFFB91C1C)
+    highRisk -> Color(0xFFB45309)
+    else -> Color(0xFF047857)
+  }
+  val alertText = if (overLimitHours > 0f) {
+    "⚠️ Screen Time Limit Exceeded! You've exceeded your daily limit by ${"%.1f".format(overLimitHours)} hrs. Step away and reconnect with family."
+  } else {
+    "✅ Screen time is within the balance window. Keep your family-first rhythm going."
+  }
+
+  LazyColumn(
+    modifier = modifier.fillMaxSize(),
+    contentPadding = PaddingValues(horizontal = 20.dp, vertical = 16.dp),
+    verticalArrangement = Arrangement.spacedBy(18.dp)
+  ) {
+    item {
+      Spacer(modifier = Modifier.height(2.dp))
+      Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+      ) {
+        Column(modifier = Modifier.weight(1f)) {
+          Text(
+            text = "Good morning, $userName 👋",
+            style = MaterialTheme.typography.headlineMedium.copy(
+              fontWeight = FontWeight.ExtraBold,
+              color = DarkSlate,
+              fontSize = 28.sp
+            )
+          )
+          Spacer(modifier = Modifier.height(4.dp))
+          Text(
+            text = "Usra AI is ready for triage, burnout checks, and mental wellbeing support.",
+            style = MaterialTheme.typography.bodyMedium.copy(
+              color = MutedGray,
+              fontSize = 14.sp,
+              lineHeight = 18.sp
+            )
+          )
+        }
+
+        Row(
+          verticalAlignment = Alignment.CenterVertically,
+          horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+          Column(horizontalAlignment = Alignment.End) {
+            Text(
+              text = "State of Mind",
+              style = MaterialTheme.typography.labelMedium.copy(
+                color = DarkSlate,
+                fontWeight = FontWeight.SemiBold
+              )
+            )
+            Text(
+              text = if (stateOfMindLoggingEnabled) "Logging on" else "Paused",
+              style = MaterialTheme.typography.labelSmall.copy(
+                color = if (stateOfMindLoggingEnabled) AccentGreen else MutedGray,
+                fontWeight = FontWeight.Bold
+              )
+            )
+          }
+          Switch(
+            checked = stateOfMindLoggingEnabled,
+            onCheckedChange = { stateOfMindLoggingEnabled = it }
+          )
+
+          Box(
+            modifier = Modifier
+              .size(48.dp)
+              .clip(CircleShape)
+              .background(AccentBlueSoft),
+            contentAlignment = Alignment.Center
+          ) {
+            Text(
+              text = userName.take(1).uppercase(),
+              color = AccentBlue,
+              style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
+            )
+          }
+        }
+      }
+    }
+
+    item {
+      ElevatedCard(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(24.dp),
+        colors = CardDefaults.elevatedCardColors(containerColor = Color.White)
+      ) {
+        Column(
+          modifier = Modifier.padding(20.dp),
+          verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+          Surface(
+            color = SoftRed.copy(alpha = 0.16f),
+            shape = RoundedCornerShape(999.dp)
+          ) {
+            Text(
+              text = "🚨 HIGH RISK",
+              modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+              style = MaterialTheme.typography.labelMedium.copy(
+                color = Color(0xFFB91C1C),
+                fontWeight = FontWeight.ExtraBold,
+                letterSpacing = 0.8.sp
+              )
+            )
+          }
+
+          Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(
+              text = "Burnout AI Tracker Evaluation",
+              style = MaterialTheme.typography.titleLarge.copy(
+                fontWeight = FontWeight.ExtraBold,
+                color = DarkSlate,
+                fontSize = 22.sp
+              )
+            )
+            Text(
+              text = "Local simulation only — sliders update the triage state instantly on device.",
+              style = MaterialTheme.typography.bodySmall.copy(
+                color = MutedGray,
+                lineHeight = 16.sp
+              )
+            )
+          }
+
+          Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+              Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+              ) {
+                Text(
+                  text = "Screen Time Limit",
+                  style = MaterialTheme.typography.titleSmall.copy(
+                    fontWeight = FontWeight.SemiBold,
+                    color = DarkSlate
+                  )
+                )
+                Text(
+                  text = "${"%.1f".format(screenTimeHours)}h",
+                  style = MaterialTheme.typography.labelLarge.copy(
+                    fontWeight = FontWeight.Bold,
+                    color = AccentBlue
+                  )
+                )
+              }
+              Slider(
+                value = screenTimeHours,
+                onValueChange = { screenTimeHours = it },
+                valueRange = 0f..12f,
+                colors = SliderDefaults.colors(
+                  activeTrackColor = Color(0xFF06B6D4),
+                  thumbColor = Color(0xFF06B6D4),
+                  activeTickColor = Color(0xFF06B6D4),
+                  inactiveTrackColor = AccentBlueSoft
+                )
+              )
+            }
+
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+              Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+              ) {
+                Text(
+                  text = "Sleep Log Hours",
+                  style = MaterialTheme.typography.titleSmall.copy(
+                    fontWeight = FontWeight.SemiBold,
+                    color = DarkSlate
+                  )
+                )
+                Text(
+                  text = "${"%.1f".format(sleepLogHours)}h",
+                  style = MaterialTheme.typography.labelLarge.copy(
+                    fontWeight = FontWeight.Bold,
+                    color = AccentGreen
+                  )
+                )
+              }
+              Slider(
+                value = sleepLogHours,
+                onValueChange = { sleepLogHours = it },
+                valueRange = 0f..12f,
+                colors = SliderDefaults.colors(
+                  activeTrackColor = Color(0xFF10B981),
+                  thumbColor = Color(0xFF10B981),
+                  activeTickColor = Color(0xFF10B981),
+                  inactiveTrackColor = AccentGreenSoft
+                )
+              )
+            }
+          }
+
+          Surface(
+            modifier = Modifier.fillMaxWidth(),
+            color = warningBackground,
+            shape = RoundedCornerShape(18.dp),
+            border = BorderStroke(1.dp, warningBorder)
+          ) {
+            Row(
+              modifier = Modifier.padding(14.dp),
+              horizontalArrangement = Arrangement.spacedBy(12.dp),
+              verticalAlignment = Alignment.Top
+            ) {
+              Icon(
+                imageVector = Icons.Default.Warning,
+                contentDescription = null,
+                tint = warningTextColor,
+                modifier = Modifier.size(22.dp)
+              )
+              Text(
+                text = alertText,
+                style = MaterialTheme.typography.bodyMedium.copy(
+                  color = warningTextColor,
+                  fontWeight = FontWeight.Medium,
+                  lineHeight = 20.sp
+                )
+              )
+            }
+          }
+        }
+      }
+    }
+
+    item {
+      OutlinedCard(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(24.dp),
+        colors = CardDefaults.outlinedCardColors(containerColor = Color.White)
+      ) {
+        Column(
+          modifier = Modifier.padding(20.dp),
+          verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+          Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+          ) {
+            Column(modifier = Modifier.weight(1f)) {
+              Text(
+                text = "Usra AI Conversational Triage Interface",
+                style = MaterialTheme.typography.titleMedium.copy(
+                  fontWeight = FontWeight.ExtraBold,
+                  color = DarkSlate,
+                  fontSize = 18.sp
+                )
+              )
+              Text(
+                text = "Your family doctor chat history, kept local for the demo.",
+                style = MaterialTheme.typography.bodySmall.copy(
+                  color = MutedGray,
+                  lineHeight = 16.sp
+                )
+              )
+            }
+
+            Surface(
+              color = AccentBlueSoft,
+              shape = RoundedCornerShape(999.dp)
+            ) {
+              Text(
+                text = "Demo mode",
+                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                style = MaterialTheme.typography.labelSmall.copy(
+                  color = AccentBlue,
+                  fontWeight = FontWeight.Bold
+                )
+              )
+            }
+          }
+
+          Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            chatMessages.forEach { message ->
+              UsraChatBubble(message = message)
+            }
+          }
+        }
+      }
+    }
+
+    item {
+      Row(
+        modifier = Modifier
+          .fillMaxWidth()
+          .horizontalScroll(rememberScrollState()),
+        horizontalArrangement = Arrangement.spacedBy(10.dp)
+      ) {
+        UsraQuickActionPill(
+          text = "✨ AI Features",
+          icon = Icons.Default.AutoAwesome,
+          onClick = {
+            messageInput = "Show me the AI features available for triage and wellbeing."
+          }
+        )
+        UsraQuickActionPill(
+          text = "Add Daily Goal",
+          icon = Icons.Default.Add,
+          onClick = {
+            messageInput = "Add a daily goal: 10 minutes breathing, 20 minutes offline family time."
+          }
+        )
+        UsraQuickActionPill(
+          text = "Translate Lab Report",
+          icon = Icons.Default.Language,
+          onClick = {
+            messageInput = "Translate this lab report into simple Arabic and English."
+          }
+        )
+      }
+    }
+
+    item {
+      ElevatedCard(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(24.dp),
+        colors = CardDefaults.elevatedCardColors(containerColor = Color.White)
+      ) {
+        Column(
+          modifier = Modifier.padding(16.dp),
+          verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+          OutlinedTextField(
+            value = messageInput,
+            onValueChange = { messageInput = it },
+            modifier = Modifier.fillMaxWidth(),
+            placeholder = {
+              Text("Ask about symptoms, stress, sleep, medication, or a lab report...")
+            },
+            leadingIcon = {
+              IconButton(
+                onClick = {
+                  val newVoiceState = !voiceDictationEnabled
+                  voiceDictationEnabled = newVoiceState
+                  if (newVoiceState && messageInput.isBlank()) {
+                    messageInput = "I’m feeling stressed and need a quick triage check."
+                  }
+                }
+              ) {
+                Icon(
+                  imageVector = Icons.Default.Mic,
+                  contentDescription = "Voice dictation",
+                  tint = if (voiceDictationEnabled) AccentBlue else MutedGray
+                )
+              }
+            },
+            trailingIcon = {
+              Row(verticalAlignment = Alignment.CenterVertically) {
+                IconButton(
+                  onClick = { attachmentCount += 1 }
+                ) {
+                  Icon(
+                    imageVector = Icons.Default.Add,
+                    contentDescription = "Attach document",
+                    tint = if (attachmentCount > 0) AccentGreen else MutedGray
+                  )
+                }
+                IconButton(
+                  onClick = {
+                    val trimmed = messageInput.trim()
+                    if (trimmed.isNotEmpty()) {
+                      val outgoingText = buildString {
+                        append(trimmed)
+                        if (attachmentCount > 0) {
+                          append("\n📎 $attachmentCount attachment(s) ready for review")
+                        }
+                      }
+
+                      chatMessages.add(
+                        UsraChatMessage(
+                          sender = UsraChatSender.USER,
+                          text = outgoingText
+                        )
+                      )
+
+                      messageInput = ""
+                      val attachmentsSnapshot = attachmentCount
+                      attachmentCount = 0
+
+                      scope.launch {
+                        delay(850)
+                        val reply = when {
+                          outgoingText.contains("headache", ignoreCase = true) ->
+                            "Thanks, Sami. Headaches can worsen with sleep debt and long screen sessions. If this is severe, sudden, or paired with fever, please seek in-person care."
+
+                          outgoingText.contains("stress", ignoreCase = true) || outgoingText.contains("overwhelmed", ignoreCase = true) ->
+                            "I hear you. Let’s slow the system down with one breathing minute, a water break, and a quick family check-in."
+
+                          outgoingText.contains("lab", ignoreCase = true) || outgoingText.contains("report", ignoreCase = true) ->
+                            "I can help summarize the report into plain language. If you share the key values, I’ll translate them clearly."
+
+                          attachmentsSnapshot > 0 ->
+                            "I received the attachment locally for the demo flow. I can review the document and guide the next step."
+
+                          else ->
+                            "Got it. I’m here with local triage guidance — tell me if the concern is pain, sleep, mood, medication, or a family stressor."
+                        }
+
+                        chatMessages.add(
+                          UsraChatMessage(
+                            sender = UsraChatSender.AI,
+                            text = reply
+                          )
+                        )
+                      }
+                    }
+                  }
+                ) {
+                  Icon(
+                    imageVector = Icons.AutoMirrored.Filled.Send,
+                    contentDescription = "Send message",
+                    tint = AccentBlue
+                  )
+                }
+              }
+            },
+            singleLine = false,
+            minLines = 2,
+            maxLines = 4,
+            shape = RoundedCornerShape(20.dp),
+            colors = OutlinedTextFieldDefaults.colors(
+              focusedBorderColor = AccentBlue,
+              unfocusedBorderColor = Color(0xFFE2E8F0),
+              focusedContainerColor = Color.White,
+              unfocusedContainerColor = Color.White,
+              cursorColor = AccentBlue
+            )
+          )
+
+          Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+          ) {
+            Text(
+              text = if (voiceDictationEnabled) "🎙️ Voice dictation is active" else "Tap the mic for voice dictation",
+              style = MaterialTheme.typography.labelMedium.copy(
+                color = if (voiceDictationEnabled) AccentBlue else MutedGray,
+                fontWeight = FontWeight.Medium
+              )
+            )
+
+            Text(
+              text = if (attachmentCount > 0) "📎 $attachmentCount document(s) ready" else "Attachments stay local in demo mode",
+              style = MaterialTheme.typography.labelSmall.copy(
+                color = if (attachmentCount > 0) AccentGreen else MutedGray,
+                fontWeight = FontWeight.SemiBold
+              )
+            )
+          }
+
+          if (stateOfMindLoggingEnabled) {
+            Surface(
+              color = AccentBlueSoft.copy(alpha = 0.45f),
+              shape = RoundedCornerShape(16.dp)
+            ) {
+              Text(
+                text = "State of Mind logging is enabled. Mood notes can be captured from this demo screen.",
+                modifier = Modifier.padding(12.dp),
+                style = MaterialTheme.typography.bodySmall.copy(
+                  color = AccentBlue,
+                  lineHeight = 16.sp
+                )
+              )
+            }
+          }
+        }
+      }
+    }
+
+    item {
+      Spacer(modifier = Modifier.height(8.dp))
+    }
+  }
+}
+
+@Composable
+private fun UsraChatBubble(message: UsraChatMessage) {
+  val isUser = message.sender == UsraChatSender.USER
+  val bubbleColor = if (isUser) AccentBlueSoft else OffWhite
+  val bubbleBorder = if (isUser) AccentBlueSoft else Color(0xFFE5E7EB)
+  val textColor = if (isUser) DarkSlate else DarkSlate
+
+  Column(
+    modifier = Modifier.fillMaxWidth(),
+    horizontalAlignment = if (isUser) Alignment.End else Alignment.Start
+  ) {
+    Text(
+      text = if (isUser) "You" else "Usra AI",
+      style = MaterialTheme.typography.labelSmall.copy(
+        color = if (isUser) AccentBlue else AccentGreen,
+        fontWeight = FontWeight.Bold,
+        letterSpacing = 0.4.sp
+      )
+    )
+    Spacer(modifier = Modifier.height(4.dp))
+    Surface(
+      color = bubbleColor,
+      shape = RoundedCornerShape(
+        topStart = 22.dp,
+        topEnd = 22.dp,
+        bottomStart = if (isUser) 22.dp else 8.dp,
+        bottomEnd = if (isUser) 8.dp else 22.dp
+      ),
+      border = BorderStroke(1.dp, bubbleBorder)
+    ) {
+      Text(
+        text = message.text,
+        modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+        style = MaterialTheme.typography.bodyMedium.copy(
+          color = textColor,
+          lineHeight = 20.sp
+        )
+      )
+    }
+  }
+}
+
+@Composable
+private fun UsraQuickActionPill(
+  text: String,
+  icon: androidx.compose.ui.graphics.vector.ImageVector,
+  onClick: () -> Unit
+) {
+  AssistChip(
+    onClick = onClick,
+    label = {
+      Text(
+        text = text,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
+        style = MaterialTheme.typography.labelMedium.copy(
+          fontWeight = FontWeight.SemiBold
+        )
+      )
+    },
+    leadingIcon = {
+      Icon(
+        imageVector = icon,
+        contentDescription = null,
+        modifier = Modifier.size(18.dp)
+      )
+    },
+    shape = RoundedCornerShape(999.dp),
+    colors = AssistChipDefaults.assistChipColors(
+      containerColor = Color.White,
+      labelColor = DarkSlate,
+      leadingIconContentColor = AccentBlue
+    ),
+    border = BorderStroke(1.dp, Color(0xFFE2E8F0))
+  )
 }
 

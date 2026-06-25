@@ -1,4 +1,4 @@
-package com.example.ui.theme
+package com.aistudio.suqoonplus.fmlbal.example.ui.theme
 
 import androidx.compose.ui.graphics.Color
 import androidx.compose.runtime.getValue
