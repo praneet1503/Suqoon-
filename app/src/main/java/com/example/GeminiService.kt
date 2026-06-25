@@ -407,4 +407,88 @@ object GeminiService {
 
         result
     }
+
+    suspend fun getChatResponse(
+        userName: String,
+        activePersonName: String,
+        activeScreenTime: Float,
+        activeSleepHours: Float,
+        familyContext: String,
+        messageHistory: List<Pair<String, Boolean>>,
+        latestMessage: String
+    ): String = withContext(Dispatchers.IO) {
+        val groqApiKey = try { BuildConfig.GROQ_API_KEY } catch (e: Exception) { "" }
+        val geminiApiKey = try { BuildConfig.GEMINI_API_KEY } catch (e: Exception) { "" }
+
+        val isGroqEnabled = isApiKeyConfigured(groqApiKey, "MY_GROQ_API_KEY")
+        val isGeminiEnabled = isApiKeyConfigured(geminiApiKey, "MY_GEMINI_API_KEY")
+
+        val contextBuilder = StringBuilder()
+        contextBuilder.append("You are Usra AI, an empathetic senior digital wellness and family relation companion. ")
+        contextBuilder.append("The current user interacting with you is $activePersonName. ")
+        contextBuilder.append("Their specific daily screen time is $activeScreenTime hours, and their average sleep is $activeSleepHours hours. ")
+        contextBuilder.append("The family's screen and wellness context is: $familyContext.\n")
+        contextBuilder.append("Answer their query warmly, encouragingly, and guide them towards offline/screen-free bonding and digital health based on their specific screen time ($activeScreenTime hrs) and sleep ($activeSleepHours hrs) metrics. Suggest highly realistic screen-free habits, physical alternatives, or sleep optimization strategies fitted specifically to their profile. Keep responses concise, warm, and therapeutic.\n\n")
+
+        for (msg in messageHistory) {
+            val sender = if (msg.second) "User" else "Usra AI"
+            contextBuilder.append("$sender: ${msg.first}\n")
+        }
+        contextBuilder.append("User: $latestMessage\n")
+        contextBuilder.append("Usra AI:")
+
+        val prompt = contextBuilder.toString()
+
+        if (isGroqEnabled) {
+            Log.d(TAG, "Calling Groq API for chat...")
+            val messages = listOf(
+                GroqMessage(role = "system", content = "You are Usra AI, an empathetic senior digital wellness and family relation companion."),
+                GroqMessage(role = "user", content = prompt)
+            )
+            val request = GroqRequest(
+                model = DEFAULT_GROQ_MODEL,
+                messages = messages,
+                temperature = 0.7f
+            )
+            try {
+                val response = RetrofitClient.groqService.generateChatCompletion(
+                    authorization = "Bearer $groqApiKey",
+                    request = request
+                )
+                val responseText = response.choices?.firstOrNull()?.message?.content
+                if (!responseText.isNullOrBlank()) {
+                    return@withContext responseText
+                } else {
+                    return@withContext "I'm here for you! Could you please repeat that?"
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error in Groq chat", e)
+                return@withContext "Error connecting to Groq. Please verify your GROQ_API_KEY. Details: ${e.localizedMessage}"
+            }
+        } else if (isGeminiEnabled) {
+            Log.d(TAG, "Calling Gemini API for chat...")
+            val request = GeminiRequest(
+                contents = listOf(Content(parts = listOf(Part(text = prompt)))),
+                systemInstruction = Content(parts = listOf(Part(text = "You are Usra AI, an empathetic senior digital wellness and family relation companion.")))
+            )
+            try {
+                val response = RetrofitClient.geminiService.generateContent(
+                    model = DEFAULT_GEMINI_MODEL,
+                    apiKey = geminiApiKey,
+                    request = request
+                )
+                val responseText = response.candidates?.firstOrNull()?.content?.parts?.firstOrNull()?.text
+                if (!responseText.isNullOrBlank()) {
+                    return@withContext responseText
+                } else {
+                    return@withContext "I'm here for you! How can I help you disconnect and reconnect today?"
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error in Gemini chat", e)
+                return@withContext "Could not load AI response right now. Please ensure your GEMINI_API_KEY is configured correctly."
+            }
+        } else {
+            return@withContext "No API key configured. Please configure GEMINI_API_KEY or GROQ_API_KEY in the Secrets panel."
+        }
+    }
 }

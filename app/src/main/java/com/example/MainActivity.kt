@@ -149,6 +149,8 @@ fun UsraApp(
   }
   var showResetModal by rememberSaveable { mutableStateOf(false) }
   var showAccountPage by rememberSaveable { mutableStateOf(false) }
+  var showPlusMenu by remember { mutableStateOf(false) }
+  var showUsraAIChat by rememberSaveable { mutableStateOf(false) }
   var userName by remember { 
     mutableStateOf(prefs.getString("user_name", "Sami") ?: "Sami") 
   }
@@ -217,87 +219,145 @@ fun UsraApp(
     Scaffold(
       modifier = Modifier.fillMaxSize(),
       bottomBar = {
-        NavigationBar(
-          containerColor = Color.White,
-          tonalElevation = 8.dp,
-          modifier = Modifier.windowInsetsPadding(WindowInsets.navigationBars)
+        Box(
+          modifier = Modifier
+            .fillMaxWidth()
+            .navigationBarsPadding(),
+          contentAlignment = Alignment.BottomCenter
         ) {
-          NavigationBarItem(
-            selected = currentTab == 0,
-            onClick = { currentTab = 0 },
-            icon = {
-              Icon(
-                imageVector = if (currentTab == 0) Icons.Filled.Home else Icons.Outlined.Home,
-                contentDescription = "Home"
+          // Custom notched bottom bar background with premium shadow
+          Surface(
+            modifier = Modifier
+              .fillMaxWidth()
+              .height(72.dp)
+              .shadow(
+                elevation = 12.dp,
+                shape = BottomBarWithCutoutShape()
+              ),
+            color = if (isDarkTheme) Color(0xFF1C1E1E) else Color.White,
+            shape = BottomBarWithCutoutShape()
+          ) {
+            Row(
+              modifier = Modifier.fillMaxSize(),
+              verticalAlignment = Alignment.CenterVertically
+            ) {
+              // Tab 0: Home
+              BottomNavItem(
+                selected = currentTab == 0,
+                onClick = { currentTab = 0 },
+                icon = if (currentTab == 0) Icons.Filled.Home else Icons.Outlined.Home,
+                label = "Home",
+                activeColor = AccentBlue,
+                modifier = Modifier.weight(1f).testTag("home_tab")
               )
-            },
-            label = { Text("Home") },
-            colors = NavigationBarItemDefaults.colors(
-              selectedIconColor = AccentBlue,
-              selectedTextColor = AccentBlue,
-              indicatorColor = AccentBlueSoft,
-              unselectedIconColor = MutedGray,
-              unselectedTextColor = MutedGray
-            ),
-            modifier = Modifier.testTag("home_tab")
-          )
-          NavigationBarItem(
-            selected = currentTab == 1,
-            onClick = { currentTab = 1 },
-            icon = {
-              Icon(
-                imageVector = if (currentTab == 1) Icons.Filled.Group else Icons.Outlined.Group,
-                contentDescription = "Family Harmony"
+
+              // Tab 1: Harmony
+              BottomNavItem(
+                selected = currentTab == 1,
+                onClick = { currentTab = 1 },
+                icon = if (currentTab == 1) Icons.Filled.Group else Icons.Outlined.Group,
+                label = "Harmony",
+                activeColor = AccentGreen,
+                modifier = Modifier.weight(1f).testTag("family_tab")
               )
-            },
-            label = { Text("Harmony") },
-            colors = NavigationBarItemDefaults.colors(
-              selectedIconColor = AccentGreen,
-              selectedTextColor = AccentGreen,
-              indicatorColor = AccentGreenSoft,
-              unselectedIconColor = MutedGray,
-              unselectedTextColor = MutedGray
-            ),
-            modifier = Modifier.testTag("family_tab")
-          )
-          NavigationBarItem(
-            selected = currentTab == 2,
-            onClick = { currentTab = 2 },
-            icon = {
-              Icon(
-                imageVector = if (currentTab == 2) Icons.Filled.Spa else Icons.Outlined.Spa,
-                contentDescription = "Quests"
+
+              // Central empty placeholder for the cutout/notch
+              Box(modifier = Modifier.weight(1f))
+
+              // Tab 2: Quests
+              BottomNavItem(
+                selected = currentTab == 2,
+                onClick = { currentTab = 2 },
+                icon = if (currentTab == 2) Icons.Filled.Spa else Icons.Outlined.Spa,
+                label = "Quests",
+                activeColor = AccentBlue,
+                modifier = Modifier.weight(1f).testTag("quests_tab")
               )
-            },
-            label = { Text("Quests") },
-            colors = NavigationBarItemDefaults.colors(
-              selectedIconColor = AccentBlue,
-              selectedTextColor = AccentBlue,
-              indicatorColor = AccentBlueSoft,
-              unselectedIconColor = MutedGray,
-              unselectedTextColor = MutedGray
-            ),
-            modifier = Modifier.testTag("quests_tab")
-          )
-          NavigationBarItem(
-            selected = currentTab == 3,
-            onClick = { currentTab = 3 },
-            icon = {
-              Icon(
-                imageVector = if (currentTab == 3) Icons.Filled.Forum else Icons.Outlined.Forum,
-                contentDescription = "Family Feed"
+
+              // Tab 3: Feed
+              BottomNavItem(
+                selected = currentTab == 3,
+                onClick = { currentTab = 3 },
+                icon = if (currentTab == 3) Icons.Filled.Forum else Icons.Outlined.Forum,
+                label = "Feed",
+                activeColor = Color(0xFF7C3AED),
+                modifier = Modifier.weight(1f).testTag("feed_tab")
               )
-            },
-            label = { Text("Feed") },
-            colors = NavigationBarItemDefaults.colors(
-              selectedIconColor = Color(0xFF7C3AED),
-              selectedTextColor = Color(0xFF7C3AED),
-              indicatorColor = Color(0xFFF3E8FF),
-              unselectedIconColor = MutedGray,
-              unselectedTextColor = MutedGray
-            ),
-            modifier = Modifier.testTag("feed_tab")
-          )
+            }
+          }
+
+          // Options popup when clicking Plus (+) button
+          AnimatedVisibility(
+            visible = showPlusMenu,
+            enter = slideInVertically(initialOffsetY = { it / 2 }) + fadeIn(),
+            exit = slideOutVertically(targetOffsetY = { it / 2 }) + fadeOut(),
+            modifier = Modifier
+              .align(Alignment.BottomCenter)
+              .offset(y = (-80).dp)
+          ) {
+            Card(
+              colors = CardDefaults.cardColors(containerColor = if (isDarkTheme) Color(0xFF1C1E1E) else Color.White),
+              shape = RoundedCornerShape(20.dp),
+              elevation = CardDefaults.cardElevation(defaultElevation = 8.dp),
+              modifier = Modifier
+                .border(
+                  width = 1.dp,
+                  color = if (isDarkTheme) Color(0xFF2C2E2E) else AccentBlueSoft,
+                  shape = RoundedCornerShape(20.dp)
+                )
+                .clickable {
+                  showUsraAIChat = true
+                  showPlusMenu = false
+                }
+            ) {
+              Row(
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+              ) {
+                Box(
+                  modifier = Modifier
+                    .size(28.dp)
+                    .clip(CircleShape)
+                    .background(if (isDarkTheme) Color(0xFF2C2E2E) else AccentBlueSoft),
+                  contentAlignment = Alignment.Center
+                ) {
+                  Text("✨", fontSize = 14.sp)
+                }
+                Text(
+                  text = "Usra AI Assistant",
+                  fontWeight = FontWeight.Bold,
+                  color = DarkSlate,
+                  fontSize = 14.sp
+                )
+              }
+            }
+          }
+
+          // Floating Action Button (+) centered inside the cutout/notch
+          Box(
+            modifier = Modifier
+              .align(Alignment.BottomCenter)
+              .offset(y = (-28).dp)
+              .size(56.dp)
+              .clip(CircleShape)
+              .background(
+                brush = androidx.compose.ui.graphics.Brush.linearGradient(
+                  colors = listOf(AccentBlue, Color(0xFF7C3AED))
+                )
+              )
+              .clickable {
+                showPlusMenu = !showPlusMenu
+              },
+            contentAlignment = Alignment.Center
+          ) {
+            Icon(
+              imageVector = if (showPlusMenu) Icons.Default.Close else Icons.Default.Add,
+              contentDescription = "Menu Options",
+              tint = Color.White,
+              modifier = Modifier.size(28.dp)
+            )
+          }
         }
       },
       containerColor = SoftNeutralBackground
@@ -496,6 +556,23 @@ fun UsraApp(
       )
     }
 
+    // Full screen Slide Up Usra AI Chat Screen Overlay
+    AnimatedVisibility(
+      visible = showUsraAIChat,
+      enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
+      exit = slideOutVertically(targetOffsetY = { it }) + fadeOut(),
+      modifier = Modifier.fillMaxSize()
+    ) {
+      UsraAIChatScreen(
+        userName = userName,
+        screenTime = screenTime,
+        onScreenTimeChange = { screenTime = it },
+        sleepLog = sleepLog,
+        onSleepLogChange = { sleepLog = it },
+        onClose = { showUsraAIChat = false }
+      )
+    }
+
     // Elegant, custom-designed premium top-toast notification alert
     AnimatedVisibility(
       visible = activeToastMessage != null,
@@ -613,6 +690,25 @@ fun HomeDashboardView(
   var aiLoading by remember { mutableStateOf(false) }
   val scope = rememberCoroutineScope()
 
+  var momScreenTime by remember { mutableStateOf(prefs.getFloat("mom_screen_time", 4.0f)) }
+  var momSleepLog by remember { mutableStateOf(prefs.getFloat("mom_sleep_log", 7.0f)) }
+
+  var dadScreenTime by remember { mutableStateOf(prefs.getFloat("dad_screen_time", 5.0f)) }
+  var dadSleepLog by remember { mutableStateOf(prefs.getFloat("dad_sleep_log", 6.5f)) }
+
+  var selectedMember by remember { mutableStateOf("Sami (You)") }
+
+  val activeScreenVal = when (selectedMember) {
+      "Sami (You)" -> screenTime
+      "Mom (Working Parent)" -> momScreenTime
+      else -> dadScreenTime
+  }
+  val activeSleepVal = when (selectedMember) {
+      "Sami (You)" -> sleepLog
+      "Mom (Working Parent)" -> momSleepLog
+      else -> dadSleepLog
+  }
+
   LaunchedEffect(aiRecommendations) {
     if (aiRecommendations != null) {
       prefs.edit().putString("ai_detox_recommendations", aiRecommendations).apply()
@@ -633,25 +729,25 @@ fun HomeDashboardView(
   )
 
   // Live client-side evaluation engine matrix
-  val currentScore = ((screenTime / 12f) * 60f + ((10f - sleepLog) / 6f) * 40f).coerceIn(5f, 100f)
+  val currentScore = ((activeScreenVal / 12f) * 60f + ((10f - activeSleepVal) / 6f) * 40f).coerceIn(5f, 100f)
   val weeklyScores = listOf(42f, 68f, 85f, 58f, 35f, 22f, currentScore)
   val weeklyDays = listOf("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
 
   val riskConfig = when {
-    screenTime > 7.0f && sleepLog < 6.0f -> {
+    activeScreenVal > 7.0f && activeSleepVal < 6.0f -> {
       RiskConfig(
         title = "🔴 HIGH RISK",
-        desc = "Your late-night screen usage + low sleep is matching high burnout indicators.",
+        desc = "Late-night screen usage + low sleep is matching high burnout indicators for $selectedMember.",
         bgColor = Color(0xFFFFF5F5),
         borderColor = Color(0xFFFEE2E2),
         textColor = Color(0xFFDC2626),
         dotColor = Color(0xFFEF4444)
       )
     }
-    screenTime < 4.0f && sleepLog > 7.0f -> {
+    activeScreenVal < 4.0f && activeSleepVal > 7.0f -> {
       RiskConfig(
         title = "🟢 LOW RISK",
-        desc = "Great job! Your digital fatigue is extremely low. Keep up this healthy balance.",
+        desc = "Great job! Digital fatigue is extremely low for $selectedMember. Keep up this healthy balance.",
         bgColor = Color(0xFFE2F7EA),
         borderColor = Color(0xFFBFF0D4),
         textColor = Color(0xFF047857),
@@ -661,7 +757,7 @@ fun HomeDashboardView(
     else -> {
       RiskConfig(
         title = "🟡 MODERATE RISK",
-        desc = "Your digital status is moderately balanced but could improve.",
+        desc = "Digital status for $selectedMember is moderately balanced but could improve.",
         bgColor = Color(0xFFFFFBEB),
         borderColor = Color(0xFFFEF3C7),
         textColor = Color(0xFFD97706),
@@ -841,6 +937,86 @@ fun HomeDashboardView(
           )
           Spacer(modifier = Modifier.height(16.dp))
 
+          // Profile Chip Selector Row
+          Row(
+            modifier = Modifier
+              .fillMaxWidth()
+              .horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically
+          ) {
+            listOf(
+              Triple("Sami (You)", "S", AccentBlue),
+              Triple("Mom (Working Parent)", "M", AccentGreen),
+              Triple("Dad (Work Mode)", "D", AmberBurnout)
+            ).forEach { (memberName, initial, color) ->
+              val isSelected = selectedMember == memberName
+              val memberScreen = when (memberName) {
+                "Sami (You)" -> screenTime
+                "Mom (Working Parent)" -> momScreenTime
+                else -> dadScreenTime
+              }
+              val memberSleep = when (memberName) {
+                "Sami (You)" -> sleepLog
+                "Mom (Working Parent)" -> momSleepLog
+                else -> dadSleepLog
+              }
+
+              Card(
+                colors = CardDefaults.cardColors(
+                  containerColor = if (isSelected) color.copy(alpha = 0.12f) else (if (ThemeConfig.isDarkTheme) Color(0xFF1C1E1E) else Color.White)
+                ),
+                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier
+                  .width(160.dp)
+                  .clickable { selectedMember = memberName }
+                  .border(
+                    width = if (isSelected) 2.dp else 1.dp,
+                    color = if (isSelected) color else (if (ThemeConfig.isDarkTheme) Color(0xFF2C2E2E) else Color(0xFFECEFF3)),
+                    shape = RoundedCornerShape(12.dp)
+                  )
+              ) {
+                Row(
+                  modifier = Modifier.padding(8.dp),
+                  verticalAlignment = Alignment.CenterVertically,
+                  horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                  Box(
+                    modifier = Modifier
+                      .size(28.dp)
+                      .clip(CircleShape)
+                      .background(color),
+                    contentAlignment = Alignment.Center
+                  ) {
+                    Text(
+                      text = initial,
+                      color = Color.White,
+                      fontWeight = FontWeight.Bold,
+                      fontSize = 13.sp
+                    )
+                  }
+                  Column {
+                    Text(
+                      text = memberName.split(" ").first(),
+                      fontWeight = FontWeight.Bold,
+                      fontSize = 12.5.sp,
+                      color = DarkSlate,
+                      maxLines = 1
+                    )
+                    Text(
+                      text = "${"%.1f".format(memberScreen)}h • ${"%.1f".format(memberSleep)}h sleep",
+                      fontSize = 9.5.sp,
+                      color = MutedGray,
+                      maxLines = 1
+                    )
+                  }
+                }
+              }
+            }
+          }
+
+          Spacer(modifier = Modifier.height(16.dp))
+
           // Screen Time Slider Layout
           Row(
             modifier = Modifier.fillMaxWidth(),
@@ -853,7 +1029,7 @@ fun HomeDashboardView(
             ) {
               Text(text = "📱", fontSize = 16.sp)
               Text(
-                text = "Screen Time Limit",
+                text = "Daily Screen Time",
                 style = MaterialTheme.typography.bodyMedium.copy(
                   fontWeight = FontWeight.SemiBold,
                   color = DarkSlate,
@@ -862,7 +1038,7 @@ fun HomeDashboardView(
               )
             }
             Text(
-              text = "${"%.1f".format(screenTime)}h",
+              text = "${"%.1f".format(activeScreenVal)}h",
               style = MaterialTheme.typography.bodyMedium.copy(
                 fontWeight = FontWeight.Bold,
                 color = AccentBlue,
@@ -871,15 +1047,27 @@ fun HomeDashboardView(
             )
           }
           Slider(
-            value = screenTime,
-            onValueChange = onScreenTimeChange,
-            valueRange = 1f..12f,
+            value = activeScreenVal,
+            onValueChange = { newValue ->
+              when (selectedMember) {
+                "Sami (You)" -> onScreenTimeChange(newValue)
+                "Mom (Working Parent)" -> {
+                  momScreenTime = newValue
+                  prefs.edit().putFloat("mom_screen_time", newValue).apply()
+                }
+                "Dad (Work Mode)" -> {
+                  dadScreenTime = newValue
+                  prefs.edit().putFloat("dad_screen_time", newValue).apply()
+                }
+              }
+            },
+            valueRange = 0.5f..12f,
             colors = SliderDefaults.colors(
               thumbColor = AccentBlue,
               activeTrackColor = AccentBlue,
-              inactiveTrackColor = AccentBlueSoft
+              inactiveTrackColor = if (ThemeConfig.isDarkTheme) Color(0xFF2C2E2E) else AccentBlueSoft
             ),
-            modifier = Modifier.testTag("screen_time_slider")
+            modifier = Modifier.height(24.dp).testTag("screen_time_slider")
           )
 
           Spacer(modifier = Modifier.height(12.dp))
@@ -896,7 +1084,7 @@ fun HomeDashboardView(
             ) {
               Text(text = "😴", fontSize = 16.sp)
               Text(
-                text = "Sleep Log Hours",
+                text = "Nightly Sleep duration",
                 style = MaterialTheme.typography.bodyMedium.copy(
                   fontWeight = FontWeight.SemiBold,
                   color = DarkSlate,
@@ -905,7 +1093,7 @@ fun HomeDashboardView(
               )
             }
             Text(
-              text = "${"%.1f".format(sleepLog)}h",
+              text = "${"%.1f".format(activeSleepVal)}h",
               style = MaterialTheme.typography.bodyMedium.copy(
                 fontWeight = FontWeight.Bold,
                 color = AccentGreen,
@@ -914,15 +1102,27 @@ fun HomeDashboardView(
             )
           }
           Slider(
-            value = sleepLog,
-            onValueChange = onSleepLogChange,
-            valueRange = 4f..10f,
+            value = activeSleepVal,
+            onValueChange = { newValue ->
+              when (selectedMember) {
+                "Sami (You)" -> onSleepLogChange(newValue)
+                "Mom (Working Parent)" -> {
+                  momSleepLog = newValue
+                  prefs.edit().putFloat("mom_sleep_log", newValue).apply()
+                }
+                "Dad (Work Mode)" -> {
+                  dadSleepLog = newValue
+                  prefs.edit().putFloat("dad_sleep_log", newValue).apply()
+                }
+              }
+            },
+            valueRange = 3f..10f,
             colors = SliderDefaults.colors(
               thumbColor = AccentGreen,
               activeTrackColor = AccentGreen,
-              inactiveTrackColor = AccentGreenSoft
+              inactiveTrackColor = if (ThemeConfig.isDarkTheme) Color(0xFF2C2E2E) else AccentGreenSoft
             ),
-            modifier = Modifier.testTag("sleep_log_slider")
+            modifier = Modifier.height(24.dp).testTag("sleep_log_slider")
           )
         }
       }
@@ -1677,6 +1877,7 @@ fun FamilyHarmonyView(
               prefs.edit().putFloat("ai_family_stress_level", it).apply()
             },
             valueRange = 1f..10f,
+            steps = 8,
             colors = SliderDefaults.colors(
               thumbColor = AccentBlue,
               activeTrackColor = AccentBlue,
@@ -4017,103 +4218,6 @@ fun ManualScreenTimeLogCard(
         Spacer(modifier = Modifier.height(10.dp))
       }
 
-      // Manual screen hours entry flow
-      Row(
-        modifier = Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(10.dp)
-      ) {
-        // Quick adjust Decrement action
-        IconButton(
-          onClick = {
-            val decremented = (screenTime - 0.5f).coerceAtLeast(0.0f)
-            onScreenTimeChange(decremented)
-            errorMessage = null
-          },
-          modifier = Modifier
-            .background(SoftNeutralBackground, CircleShape)
-            .size(40.dp)
-            .testTag("decrement_hours_button")
-        ) {
-          Icon(
-            imageVector = Icons.Default.Remove,
-            contentDescription = "Subtract 30 minutes",
-            tint = DarkSlate
-          )
-        }
-
-        // Direct Text input entry for specific logs
-        OutlinedTextField(
-          value = manualInputText,
-          onValueChange = { 
-            manualInputText = it
-            errorMessage = null 
-          },
-          placeholder = { Text("${"%.1f".format(screenTime)} hrs", color = MutedGray, fontSize = 13.sp) },
-          label = { Text("Log Screentime (hrs)", fontSize = 11.sp) },
-          singleLine = true,
-          keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-          colors = OutlinedTextFieldDefaults.colors(
-            focusedBorderColor = AccentBlue,
-            unfocusedBorderColor = Color.LightGray.copy(alpha = 0.8f),
-            focusedLabelColor = AccentBlue
-          ),
-          modifier = Modifier
-            .weight(1f)
-            .height(56.dp)
-            .testTag("manual_hours_input")
-        )
-
-        // Quick adjust Increment action
-        IconButton(
-          onClick = {
-            val incremented = (screenTime + 0.5f).coerceAtMost(24.0f)
-            onScreenTimeChange(incremented)
-            errorMessage = null
-          },
-          modifier = Modifier
-            .background(SoftNeutralBackground, CircleShape)
-            .size(40.dp)
-            .testTag("increment_hours_button")
-        ) {
-          Icon(
-            imageVector = Icons.Default.Add,
-            contentDescription = "Add 30 minutes",
-            tint = DarkSlate
-          )
-        }
-      }
-
-      // Action logging triggers
-      if (manualInputText.isNotBlank()) {
-        Spacer(modifier = Modifier.height(8.dp))
-        Button(
-          onClick = {
-            val parsedLog = manualInputText.toFloatOrNull()
-            if (parsedLog != null && parsedLog in 0.0f..24.0f) {
-              onScreenTimeChange(parsedLog)
-              manualInputText = ""
-              errorMessage = null
-            } else {
-              errorMessage = "Please enter valid hours (0 - 24)"
-            }
-          },
-          colors = ButtonDefaults.buttonColors(containerColor = AccentBlue),
-          shape = RoundedCornerShape(16.dp),
-          modifier = Modifier
-            .fillMaxWidth()
-            .height(44.dp)
-            .testTag("save_screen_time_button")
-        ) {
-          Text(
-            text = "Over-write Custom Hours",
-            fontWeight = FontWeight.Bold,
-            fontSize = 13.sp,
-            color = Color.White
-          )
-        }
-      }
-
       // Display warning error notifications if present
       errorMessage?.let { error ->
         Spacer(modifier = Modifier.height(6.dp))
@@ -5173,3 +5277,716 @@ fun FamilyFeedView(
         }
     }
 }
+
+// Custom notched bottom bar background shape
+class BottomBarWithCutoutShape(
+    private val cutoutWidthDp: androidx.compose.ui.unit.Dp = 80.dp,
+    private val cutoutHeightDp: androidx.compose.ui.unit.Dp = 24.dp
+) : androidx.compose.ui.graphics.Shape {
+    override fun createOutline(
+        size: androidx.compose.ui.geometry.Size,
+        layoutDirection: androidx.compose.ui.unit.LayoutDirection,
+        density: androidx.compose.ui.unit.Density
+    ): androidx.compose.ui.graphics.Outline {
+        val cutoutWidth = with(density) { cutoutWidthDp.toPx() }
+        val cutoutHeight = with(density) { cutoutHeightDp.toPx() }
+        val path = Path().apply {
+            val width = size.width
+            val height = size.height
+            val centerX = width / 2f
+            val startX = centerX - cutoutWidth / 2f
+            val endX = centerX + cutoutWidth / 2f
+
+            moveTo(0f, 0f)
+            lineTo(startX, 0f)
+
+            // Left side curve dropping smoothly into the notch center
+            cubicTo(
+                x1 = startX + cutoutWidth * 0.15f, y1 = 0f,
+                x2 = centerX - cutoutWidth * 0.25f, y2 = cutoutHeight,
+                x3 = centerX, y3 = cutoutHeight
+            )
+            // Right side curve rising smoothly back up to the bar top
+            cubicTo(
+                x1 = centerX + cutoutWidth * 0.25f, y1 = cutoutHeight,
+                x2 = endX - cutoutWidth * 0.15f, y2 = 0f,
+                x3 = endX, y3 = 0f
+            )
+
+            lineTo(width, 0f)
+            lineTo(width, height)
+            lineTo(0f, height)
+            close()
+        }
+        return androidx.compose.ui.graphics.Outline.Generic(path)
+    }
+}
+
+// Custom navigation bar item for clean presentation
+@Composable
+fun BottomNavItem(
+    selected: Boolean,
+    onClick: () -> Unit,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    label: String,
+    activeColor: Color,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier = modifier
+            .clip(RoundedCornerShape(12.dp))
+            .clickable { onClick() }
+            .padding(vertical = 8.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = label,
+            tint = if (selected) activeColor else MutedGray,
+            modifier = Modifier.size(24.dp)
+        )
+        Spacer(modifier = Modifier.height(4.dp))
+        Text(
+            text = label,
+            color = if (selected) activeColor else MutedGray,
+            fontSize = 11.sp,
+            fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal
+        )
+    }
+}
+
+// Separate screen dedicated to Usra AI wellness coaching
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun UsraAIChatScreen(
+    userName: String,
+    screenTime: Float,
+    onScreenTimeChange: (Float) -> Unit,
+    sleepLog: Float,
+    onSleepLogChange: (Float) -> Unit,
+    onClose: () -> Unit
+) {
+    val coroutineScope = rememberCoroutineScope()
+    val context = LocalContext.current
+    val prefs = remember { context.getSharedPreferences("usra_prefs", Context.MODE_PRIVATE) }
+
+    // State of screen time and sleep metrics for each family member
+    var samiScreenTime by remember { mutableStateOf(screenTime) }
+    var samiSleepLog by remember { mutableStateOf(sleepLog) }
+
+    var momScreenTime by remember { mutableStateOf(prefs.getFloat("mom_screen_time", 4.0f)) }
+    var momSleepLog by remember { mutableStateOf(prefs.getFloat("mom_sleep_log", 7.0f)) }
+
+    var dadScreenTime by remember { mutableStateOf(prefs.getFloat("dad_screen_time", 5.0f)) }
+    var dadSleepLog by remember { mutableStateOf(prefs.getFloat("dad_sleep_log", 6.5f)) }
+
+    var selectedMember by remember { mutableStateOf("Sami (You)") }
+    var showMetricsConfig by remember { mutableStateOf(true) }
+
+    var messages by remember {
+        mutableStateOf(
+            listOf(
+                Pair(
+                    "Hello! I am Usra AI, your family's digital wellness companion. 🌸 Use the profiles above to set specific screen times and sleep goals, then ask me for personalized recommendations or offline activities custom-tailored for any family member!",
+                    false
+                )
+            )
+        )
+    }
+    var inputText by remember { mutableStateOf("") }
+    var isLoading by remember { mutableStateOf(false) }
+    val listState = androidx.compose.foundation.lazy.rememberLazyListState()
+
+    // Sync Sami's metrics if they change on the home page
+    LaunchedEffect(screenTime, sleepLog) {
+        samiScreenTime = screenTime
+        samiSleepLog = sleepLog
+    }
+
+    // Keep the conversation scrolled to the latest message
+    LaunchedEffect(messages.size, isLoading) {
+        if (messages.isNotEmpty()) {
+            listState.animateScrollToItem(messages.size - 1)
+        }
+    }
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(SoftNeutralBackground)
+            .statusBarsPadding()
+    ) {
+        Column(modifier = Modifier.fillMaxSize()) {
+            // Screen Header Bar
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                IconButton(
+                    onClick = onClose,
+                    modifier = Modifier
+                        .size(44.dp)
+                        .clip(CircleShape)
+                        .background(if (ThemeConfig.isDarkTheme) Color(0xFF1C1E1E) else Color.White)
+                        .border(1.dp, if (ThemeConfig.isDarkTheme) Color(0xFF2C2E2E) else Color(0xFFECEFF3), CircleShape)
+                ) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                        contentDescription = "Go Back",
+                        tint = DarkSlate
+                    )
+                }
+
+                Spacer(modifier = Modifier.width(12.dp))
+
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "✨ Usra AI Wellness Coach",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 17.sp,
+                        color = DarkSlate
+                    )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(6.dp)
+                                .clip(CircleShape)
+                                .background(AccentGreen)
+                        )
+                        Text(
+                            text = "Groq-Powered Advisor",
+                            fontSize = 11.sp,
+                            color = MutedGray,
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
+                }
+
+                // Collapsible Toggle Button for variables config
+                TextButton(
+                    onClick = { showMetricsConfig = !showMetricsConfig },
+                    colors = ButtonDefaults.textButtonColors(contentColor = AccentBlue)
+                ) {
+                    Icon(
+                        imageVector = if (showMetricsConfig) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                        contentDescription = "Toggle Metrics Config",
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(modifier = Modifier.width(2.dp))
+                    Text(
+                        text = if (showMetricsConfig) "Hide Profiles" else "Show Profiles",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
+
+            // Member selection and slider tweaking UI
+            AnimatedVisibility(
+                visible = showMetricsConfig,
+                enter = expandVertically() + fadeIn(),
+                exit = shrinkVertically() + fadeOut()
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 6.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    // Profile Chip Selector Row
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp)
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        listOf(
+                            Triple("Sami (You)", "S", AccentBlue),
+                            Triple("Mom (Working Parent)", "M", AccentGreen),
+                            Triple("Dad (Work Mode)", "D", AmberBurnout)
+                        ).forEach { (memberName, initial, color) ->
+                            val isSelected = selectedMember == memberName
+                            val memberScreen = when (memberName) {
+                                "Sami (You)" -> samiScreenTime
+                                "Mom (Working Parent)" -> momScreenTime
+                                else -> dadScreenTime
+                            }
+                            val memberSleep = when (memberName) {
+                                "Sami (You)" -> samiSleepLog
+                                "Mom (Working Parent)" -> momSleepLog
+                                else -> dadSleepLog
+                            }
+
+                            Card(
+                                colors = CardDefaults.cardColors(
+                                    containerColor = if (isSelected) color.copy(alpha = 0.12f)
+                                                     else (if (ThemeConfig.isDarkTheme) Color(0xFF1C1E1E) else Color.White)
+                                ),
+                                shape = RoundedCornerShape(12.dp),
+                                modifier = Modifier
+                                    .width(160.dp)
+                                    .clickable { selectedMember = memberName }
+                                    .border(
+                                        width = if (isSelected) 2.dp else 1.dp,
+                                        color = if (isSelected) color else (if (ThemeConfig.isDarkTheme) Color(0xFF2C2E2E) else Color(0xFFECEFF3)),
+                                        shape = RoundedCornerShape(12.dp)
+                                    )
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(8.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(28.dp)
+                                            .clip(CircleShape)
+                                            .background(color),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text(
+                                            text = initial,
+                                            color = Color.White,
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 13.sp
+                                        )
+                                    }
+                                    Column {
+                                        Text(
+                                            text = memberName.split(" ").first(),
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 12.5.sp,
+                                            color = DarkSlate,
+                                            maxLines = 1
+                                        )
+                                        Text(
+                                            text = "${"%.1f".format(memberScreen)}h • ${"%.1f".format(memberSleep)}h sleep",
+                                            fontSize = 9.5.sp,
+                                            color = MutedGray,
+                                            maxLines = 1
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // Tuning Sliders Card for the active selected profile
+                    Card(
+                        colors = CardDefaults.cardColors(
+                            containerColor = if (ThemeConfig.isDarkTheme) Color(0xFF1C1E1E) else Color.White
+                        ),
+                        shape = RoundedCornerShape(16.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp)
+                            .border(
+                                width = 1.dp,
+                                color = if (ThemeConfig.isDarkTheme) Color(0xFF2C2E2E) else Color(0xFFECEFF3),
+                                shape = RoundedCornerShape(16.dp)
+                            )
+                    ) {
+                        Column(modifier = Modifier.padding(12.dp)) {
+                            val activeScreenVal = when (selectedMember) {
+                                "Sami (You)" -> samiScreenTime
+                                "Mom (Working Parent)" -> momScreenTime
+                                else -> dadScreenTime
+                            }
+                            val activeSleepVal = when (selectedMember) {
+                                "Sami (You)" -> samiSleepLog
+                                "Mom (Working Parent)" -> momSleepLog
+                                else -> dadSleepLog
+                            }
+
+                            // Sliders header
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "🔧 Configure variables for $selectedMember",
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 12.sp,
+                                    color = DarkSlate
+                                )
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(6.dp))
+                                        .background(AccentBlueSoft)
+                                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                                ) {
+                                    Text(
+                                        text = "Active Profile",
+                                        color = AccentBlue,
+                                        fontSize = 9.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.height(8.dp))
+
+                            // Screen Time Slider Row
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text("Daily Screen Time:", fontSize = 11.sp, color = MutedGray)
+                                Text("${"%.1f".format(activeScreenVal)} hrs", fontSize = 11.5.sp, fontWeight = FontWeight.Bold, color = DarkSlate)
+                            }
+                            Slider(
+                                value = activeScreenVal,
+                                onValueChange = { newValue ->
+                                    when (selectedMember) {
+                                        "Sami (You)" -> {
+                                            samiScreenTime = newValue
+                                            onScreenTimeChange(newValue)
+                                        }
+                                        "Mom (Working Parent)" -> {
+                                            momScreenTime = newValue
+                                            prefs.edit().putFloat("mom_screen_time", newValue).apply()
+                                        }
+                                        "Dad (Work Mode)" -> {
+                                            dadScreenTime = newValue
+                                            prefs.edit().putFloat("dad_screen_time", newValue).apply()
+                                        }
+                                    }
+                                },
+                                valueRange = 0.5f..12.0f,
+                                colors = SliderDefaults.colors(
+                                    thumbColor = AccentBlue,
+                                    activeTrackColor = AccentBlue,
+                                    inactiveTrackColor = if (ThemeConfig.isDarkTheme) Color(0xFF2C2E2E) else AccentBlueSoft
+                                ),
+                                modifier = Modifier.height(24.dp)
+                            )
+
+                            Spacer(modifier = Modifier.height(4.dp))
+
+                            // Sleep Log Slider Row
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text("Nightly Sleep duration:", fontSize = 11.sp, color = MutedGray)
+                                Text("${"%.1f".format(activeSleepVal)} hrs", fontSize = 11.5.sp, fontWeight = FontWeight.Bold, color = DarkSlate)
+                            }
+                            Slider(
+                                value = activeSleepVal,
+                                onValueChange = { newValue ->
+                                    when (selectedMember) {
+                                        "Sami (You)" -> {
+                                            samiSleepLog = newValue
+                                            onSleepLogChange(newValue)
+                                        }
+                                        "Mom (Working Parent)" -> {
+                                            momSleepLog = newValue
+                                            prefs.edit().putFloat("mom_sleep_log", newValue).apply()
+                                        }
+                                        "Dad (Work Mode)" -> {
+                                            dadSleepLog = newValue
+                                            prefs.edit().putFloat("dad_sleep_log", newValue).apply()
+                                        }
+                                    }
+                                },
+                                valueRange = 3.0f..10.0f,
+                                colors = SliderDefaults.colors(
+                                    thumbColor = AccentGreen,
+                                    activeTrackColor = AccentGreen,
+                                    inactiveTrackColor = if (ThemeConfig.isDarkTheme) Color(0xFF2C2E2E) else AccentGreenSoft
+                                ),
+                                modifier = Modifier.height(24.dp)
+                            )
+                        }
+                    }
+                }
+            }
+
+            // Message History list
+            LazyColumn(
+                state = listState,
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                item {
+                    Spacer(modifier = Modifier.height(8.dp))
+                }
+
+                items(messages.size) { index ->
+                    val (text, isUser) = messages[index]
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = if (isUser) Arrangement.End else Arrangement.Start
+                    ) {
+                        if (!isUser) {
+                            Box(
+                                modifier = Modifier
+                                    .padding(end = 8.dp)
+                                    .size(32.dp)
+                                    .clip(CircleShape)
+                                    .background(AccentBlueSoft),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text("✨", fontSize = 14.sp)
+                            }
+                        }
+
+                        Card(
+                            colors = CardDefaults.cardColors(
+                                containerColor = if (isUser) AccentBlue else (if (ThemeConfig.isDarkTheme) Color(0xFF1C1E1E) else Color.White)
+                            ),
+                            shape = RoundedCornerShape(
+                                topStart = 16.dp,
+                                topEnd = 16.dp,
+                                bottomStart = if (isUser) 16.dp else 4.dp,
+                                bottomEnd = if (isUser) 4.dp else 16.dp
+                            ),
+                            elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
+                            modifier = Modifier
+                                .widthIn(max = 280.dp)
+                                .border(
+                                    width = 1.dp,
+                                    color = if (isUser) Color.Transparent else (if (ThemeConfig.isDarkTheme) Color(0xFF2C2E2E) else Color(0xFFECEFF3)),
+                                    shape = RoundedCornerShape(
+                                        topStart = 16.dp,
+                                        topEnd = 16.dp,
+                                        bottomStart = if (isUser) 16.dp else 4.dp,
+                                        bottomEnd = if (isUser) 4.dp else 16.dp
+                                    )
+                                )
+                        ) {
+                            Text(
+                                text = text,
+                                color = if (isUser) Color.White else DarkSlate,
+                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                                fontSize = 14.sp,
+                                lineHeight = 20.sp
+                            )
+                        }
+                    }
+                }
+
+                if (isLoading) {
+                    item {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.Start,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .padding(end = 8.dp)
+                                    .size(32.dp)
+                                    .clip(CircleShape)
+                                    .background(AccentBlueSoft),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text("✨", fontSize = 14.sp)
+                            }
+
+                            Card(
+                                colors = CardDefaults.cardColors(
+                                    containerColor = if (ThemeConfig.isDarkTheme) Color(0xFF1C1E1E) else Color.White
+                                ),
+                                shape = RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp, bottomStart = 4.dp, bottomEnd = 16.dp),
+                                modifier = Modifier.border(
+                                    width = 1.dp,
+                                    color = if (ThemeConfig.isDarkTheme) Color(0xFF2C2E2E) else Color(0xFFECEFF3),
+                                    shape = RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp, bottomStart = 4.dp, bottomEnd = 16.dp)
+                                )
+                            ) {
+                                Column(
+                                    modifier = Modifier
+                                        .width(240.dp)
+                                        .padding(horizontal = 14.dp, vertical = 12.dp),
+                                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Filled.AutoAwesome,
+                                            contentDescription = null,
+                                            tint = AccentBlue,
+                                            modifier = Modifier.size(12.dp)
+                                        )
+                                        Text(
+                                            text = "Usra AI coach is typing...",
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = AccentBlue
+                                        )
+                                    }
+                                    // Pulses beautiful shimmer placeholders to indicate writing process
+                                    ShimmerPlaceholder(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .height(14.dp)
+                                    )
+                                    ShimmerPlaceholder(
+                                        modifier = Modifier
+                                            .fillMaxWidth(0.85f)
+                                            .height(14.dp)
+                                    )
+                                    ShimmerPlaceholder(
+                                        modifier = Modifier
+                                            .fillMaxWidth(0.55f)
+                                            .height(14.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+
+                item {
+                    Spacer(modifier = Modifier.height(16.dp))
+                }
+            }
+
+            // Chat Input Text Box Row
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .imePadding(),
+                color = if (ThemeConfig.isDarkTheme) Color(0xFF121414) else Color.White,
+                tonalElevation = 2.dp
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    OutlinedTextField(
+                        value = inputText,
+                        onValueChange = { inputText = it },
+                        placeholder = { Text("Ask Usra AI coach...") },
+                        modifier = Modifier
+                            .weight(1f)
+                            .heightIn(min = 52.dp),
+                        shape = RoundedCornerShape(26.dp),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = AccentBlue,
+                            unfocusedBorderColor = if (ThemeConfig.isDarkTheme) Color(0xFF2C2E2E) else Color(0xFFECEFF3),
+                            focusedContainerColor = if (ThemeConfig.isDarkTheme) Color(0xFF1C1E1E) else Color(0xFFF9FAFB),
+                            unfocusedContainerColor = if (ThemeConfig.isDarkTheme) Color(0xFF1C1E1E) else Color(0xFFF9FAFB)
+                        ),
+                        maxLines = 4
+                    )
+
+                    IconButton(
+                        onClick = {
+                            if (inputText.isNotBlank() && !isLoading) {
+                                val userQuery = inputText.trim()
+                                messages = messages + Pair(userQuery, true)
+                                inputText = ""
+                                isLoading = true
+
+                                coroutineScope.launch {
+                                    try {
+                                        val activeScreen = when (selectedMember) {
+                                            "Sami (You)" -> samiScreenTime
+                                            "Mom (Working Parent)" -> momScreenTime
+                                            else -> dadScreenTime
+                                        }
+                                        val activeSleep = when (selectedMember) {
+                                            "Sami (You)" -> samiSleepLog
+                                            "Mom (Working Parent)" -> momSleepLog
+                                            else -> dadSleepLog
+                                        }
+                                        val familyContext = """
+                                            - Sami (You): ${"%.1f".format(samiScreenTime)} hrs screen, ${"%.1f".format(samiSleepLog)} hrs sleep
+                                            - Mom (Working Parent): ${"%.1f".format(momScreenTime)} hrs screen, ${"%.1f".format(momSleepLog)} hrs sleep
+                                            - Dad (Work Mode): ${"%.1f".format(dadScreenTime)} hrs screen, ${"%.1f".format(dadSleepLog)} hrs sleep
+                                        """.trimIndent()
+
+                                        val response = GeminiService.getChatResponse(
+                                            userName = userName,
+                                            activePersonName = selectedMember,
+                                            activeScreenTime = activeScreen,
+                                            activeSleepHours = activeSleep,
+                                            familyContext = familyContext,
+                                            messageHistory = messages.drop(1).map { Pair(it.first, it.second) },
+                                            latestMessage = userQuery
+                                        )
+                                        messages = messages + Pair(response, false)
+                                    } catch (e: Exception) {
+                                        messages = messages + Pair("Sorry, I encountered an issue: ${e.localizedMessage}", false)
+                                    } finally {
+                                        isLoading = false
+                                    }
+                                }
+                            }
+                        },
+                        enabled = inputText.isNotBlank() && !isLoading,
+                        modifier = Modifier
+                            .size(48.dp)
+                            .clip(CircleShape)
+                            .background(
+                                brush = if (inputText.isNotBlank()) {
+                                    androidx.compose.ui.graphics.Brush.linearGradient(
+                                        colors = listOf(AccentBlue, Color(0xFF7C3AED))
+                                    )
+                                } else {
+                                    androidx.compose.ui.graphics.Brush.linearGradient(
+                                        colors = listOf(MutedGray.copy(alpha = 0.3f), MutedGray.copy(alpha = 0.3f))
+                                    )
+                                }
+                            )
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Send,
+                            contentDescription = "Send Message",
+                            tint = Color.White,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+// Reusable, highly performant Shimmer/Skeleton placeholder for loading states
+@Composable
+fun ShimmerPlaceholder(
+    modifier: Modifier = Modifier,
+    shape: androidx.compose.ui.graphics.Shape = RoundedCornerShape(8.dp)
+) {
+    val transition = rememberInfiniteTransition(label = "shimmer")
+    val alpha by transition.animateFloat(
+        initialValue = 0.35f,
+        targetValue = 0.9f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 800, easing = LinearEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "alpha"
+    )
+    Box(
+        modifier = modifier
+            .background(
+                color = if (ThemeConfig.isDarkTheme) Color(0xFF2C2E2E).copy(alpha = alpha) else Color(0xFFEFF1F5).copy(alpha = alpha),
+                shape = shape
+            )
+    )
+}
+
+
