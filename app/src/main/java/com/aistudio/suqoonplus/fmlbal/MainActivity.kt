@@ -881,7 +881,6 @@ fun HomeDashboardView(
             value = screenTime,
             onValueChange = onScreenTimeChange,
             valueRange = 1f..12f,
-            steps = 21,
             colors = SliderDefaults.colors(
               thumbColor = AccentBlue,
               activeTrackColor = AccentBlue,
@@ -925,7 +924,6 @@ fun HomeDashboardView(
             value = sleepLog,
             onValueChange = onSleepLogChange,
             valueRange = 4f..10f,
-            steps = 11,
             colors = SliderDefaults.colors(
               thumbColor = AccentGreen,
               activeTrackColor = AccentGreen,
@@ -1686,7 +1684,6 @@ fun FamilyHarmonyView(
               prefs.edit().putFloat("ai_family_stress_level", it).apply()
             },
             valueRange = 1f..10f,
-            steps = 8,
             colors = SliderDefaults.colors(
               thumbColor = AccentBlue,
               activeTrackColor = AccentBlue,
@@ -4877,4 +4874,3 @@ private fun UsraQuickActionPill(
     border = BorderStroke(1.dp, Color(0xFFE2E8F0))
   )
 }
-

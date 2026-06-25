@@ -10,34 +10,34 @@ object ThemeConfig {
 }
 
 val SoftNeutralBackground: Color
-  get() = if (ThemeConfig.isDarkTheme) Color(0xFF121414) else Color(0xFFF4F7F6)
+  get() = if (ThemeConfig.isDarkTheme) Color(0xFF121414) else Color(0xFFFDFBF7)
 
-val AccentBlue = Color(0xFF3B82F6)
+val AccentBlue = Color(0xFF8E9AAF)
 
 val AccentBlueSoft: Color
-  get() = if (ThemeConfig.isDarkTheme) Color(0xFF1E293B) else Color(0xFFE1EFF9)
+  get() = if (ThemeConfig.isDarkTheme) Color(0xFF2D3142) else Color(0xFFE8EBF0)
 
-val AccentGreen = Color(0xFF10B981)
+val AccentGreen = Color(0xFF8FB9A8)
 
 val AccentGreenSoft: Color
-  get() = if (ThemeConfig.isDarkTheme) Color(0xFF064E3B) else Color(0xFFE2F7EA)
+  get() = if (ThemeConfig.isDarkTheme) Color(0xFF1B2E26) else Color(0xFFEBF2EF)
 
 val DarkSlate: Color
-  get() = if (ThemeConfig.isDarkTheme) Color(0xFFE2E3E3) else Color(0xFF2C3E50)
+  get() = if (ThemeConfig.isDarkTheme) Color(0xFFE2E3E3) else Color(0xFF4A5568)
 
 val MutedGray: Color
-  get() = if (ThemeConfig.isDarkTheme) Color(0xFF9E9E9E) else Color(0xFF7F8C8D)
+  get() = if (ThemeConfig.isDarkTheme) Color(0xFF9E9E9E) else Color(0xFF94A3B8)
 
 // Additional support colors
-val AmberBurnout = Color(0xFFF59E0B)
+val AmberBurnout = Color(0xFFD97706)
 
 val LightAmber: Color
   get() = if (ThemeConfig.isDarkTheme) Color(0xFF451A03) else Color(0xFFFEF3C7)
 
-val SoftRed = Color(0xFFEF4444)
+val SoftRed = Color(0xFFE57373)
 
 val OffWhite: Color
-  get() = if (ThemeConfig.isDarkTheme) Color(0xFF1C1E1E) else Color(0xFFFFFFFF)
+  get() = if (ThemeConfig.isDarkTheme) Color(0xFF1C1E1E) else Color(0xFFFAFAFA)
 
 // Keep standard dark-mode colors for fallback or components if needed
 val DarkPrimary = Color(0xFF90CAF9)
