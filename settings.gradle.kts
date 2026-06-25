@@ -22,6 +22,6 @@ dependencyResolutionManagement {
   }
 }
 
-rootProject.name = "Suqoon+"
+rootProject.name = "Usra"
 
 include(":app")

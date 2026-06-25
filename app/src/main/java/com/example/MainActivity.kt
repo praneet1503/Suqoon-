@@ -1,4 +1,4 @@
-package com.aistudio.suqoonplus.fmlbal
+package com.example
 
 import android.os.Bundle
 import android.content.Context
@@ -8,6 +8,7 @@ import androidx.activity.enableEdgeToEdge
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.*
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
@@ -32,6 +33,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
@@ -39,27 +41,15 @@ import androidx.compose.ui.platform.LocalContext
 import android.widget.Toast
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.ui.theme.*
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.zIndex
-import com.aistudio.suqoonplus.fmlbal.example.GeminiService
-import com.aistudio.suqoonplus.fmlbal.example.ui.theme.AccentBlue
-import com.aistudio.suqoonplus.fmlbal.example.ui.theme.AccentBlueSoft
-import com.aistudio.suqoonplus.fmlbal.example.ui.theme.AccentGreen
-import com.aistudio.suqoonplus.fmlbal.example.ui.theme.AccentGreenSoft
-import com.aistudio.suqoonplus.fmlbal.example.ui.theme.AmberBurnout
-import com.aistudio.suqoonplus.fmlbal.example.ui.theme.DarkSlate
-import com.aistudio.suqoonplus.fmlbal.example.ui.theme.LightAmber
-import com.aistudio.suqoonplus.fmlbal.example.ui.theme.MutedGray
-import com.aistudio.suqoonplus.fmlbal.example.ui.theme.MyApplicationTheme
-import com.aistudio.suqoonplus.fmlbal.example.ui.theme.OffWhite
-import com.aistudio.suqoonplus.fmlbal.example.ui.theme.SoftNeutralBackground
-import com.aistudio.suqoonplus.fmlbal.example.ui.theme.SoftRed
-import com.aistudio.suqoonplus.fmlbal.example.ui.theme.ThemeConfig
 
 class MainActivity : ComponentActivity() {
   override fun onCreate(savedInstanceState: Bundle?) {
@@ -67,7 +57,7 @@ class MainActivity : ComponentActivity() {
     enableEdgeToEdge()
     setContent {
       val context = LocalContext.current
-      val prefs = remember { context.getSharedPreferences("suqoon_prefs", Context.MODE_PRIVATE) }
+      val prefs = remember { context.getSharedPreferences("usra_prefs", Context.MODE_PRIVATE) }
       var isDark by remember { mutableStateOf(prefs.getBoolean("dark_theme_enabled", false)) }
 
       LaunchedEffect(isDark) {
@@ -75,7 +65,7 @@ class MainActivity : ComponentActivity() {
       }
 
       MyApplicationTheme(darkTheme = isDark) {
-        SuqoonApp(
+        UsraApp(
           isDarkTheme = isDark,
           onThemeToggle = {
             val newValue = !isDark
@@ -90,12 +80,12 @@ class MainActivity : ComponentActivity() {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SuqoonApp(
+fun UsraApp(
   isDarkTheme: Boolean = false,
   onThemeToggle: () -> Unit = {}
 ) {
   val context = LocalContext.current
-  val prefs = remember { context.getSharedPreferences("suqoon_prefs", Context.MODE_PRIVATE) }
+  val prefs = remember { context.getSharedPreferences("usra_prefs", Context.MODE_PRIVATE) }
   val coroutineScope = rememberCoroutineScope()
 
   var currentTab by remember { 
@@ -294,19 +284,19 @@ fun SuqoonApp(
             onClick = { currentTab = 3 },
             icon = {
               Icon(
-                imageVector = if (currentTab == 3) Icons.Filled.AutoAwesome else Icons.Outlined.AutoAwesome,
-                contentDescription = "USRA AI"
+                imageVector = if (currentTab == 3) Icons.Filled.Forum else Icons.Outlined.Forum,
+                contentDescription = "Family Feed"
               )
             },
-            label = { Text("USRA AI") },
+            label = { Text("Feed") },
             colors = NavigationBarItemDefaults.colors(
-              selectedIconColor = AccentGreen,
-              selectedTextColor = AccentGreen,
-              indicatorColor = AccentGreenSoft,
+              selectedIconColor = Color(0xFF7C3AED),
+              selectedTextColor = Color(0xFF7C3AED),
+              indicatorColor = Color(0xFFF3E8FF),
               unselectedIconColor = MutedGray,
               unselectedTextColor = MutedGray
             ),
-            modifier = Modifier.testTag("usra_ai_tab")
+            modifier = Modifier.testTag("feed_tab")
           )
         }
       },
@@ -403,7 +393,6 @@ fun SuqoonApp(
                 if (!aiQuestsLoading) {
                   aiQuestsLoading = true
                   coroutineScope.launch {
-
                     val result = GeminiService.getAIQuests(
                       userName = userName,
                       screenTime = screenTime,
@@ -457,8 +446,12 @@ fun SuqoonApp(
                 }
               }
             )
-            3 -> UsraAIChatScreen(
-              modifier = Modifier.fillMaxSize()
+            3 -> FamilyFeedView(
+              currentUserDisplayName = userName,
+              onTriggerToast = { message, type ->
+                activeToastMessage = message
+                activeToastType = type
+              }
             )
           }
         }
@@ -613,7 +606,7 @@ fun HomeDashboardView(
   onThemeToggle: () -> Unit = {}
 ) {
   val context = LocalContext.current
-  val prefs = remember { context.getSharedPreferences("suqoon_prefs", Context.MODE_PRIVATE) }
+  val prefs = remember { context.getSharedPreferences("usra_prefs", Context.MODE_PRIVATE) }
   var aiRecommendations by remember {
     mutableStateOf(prefs.getString("ai_detox_recommendations", null))
   }
@@ -1095,7 +1088,7 @@ fun HomeDashboardView(
                   modifier = Modifier.size(18.dp)
                 )
                 Text(
-                  text = "SUQOON AI",
+                  text = "USRA AI",
                   style = MaterialTheme.typography.labelSmall.copy(
                     fontWeight = FontWeight.Bold,
                     color = Color(0xFF7C3AED),
@@ -1186,7 +1179,7 @@ fun HomeDashboardView(
             Column {
               if (aiRecommendations == null) {
                 Text(
-                  text = "Connect with Suqoon AI to evaluate your screen time (${"%.1f".format(screenTime)} hrs) and sleep duration (${"%.1f".format(sleepLog)} hrs) metrics. Our AI counselor will prompt 3 personalized physical replacement suggestions and detox habits for you.",
+                  text = "Connect with Usra AI to evaluate your screen time (${"%.1f".format(screenTime)} hrs) and sleep duration (${"%.1f".format(sleepLog)} hrs) metrics. Our AI counselor will prompt 3 personalized physical replacement suggestions and detox habits for you.",
                   style = MaterialTheme.typography.bodyMedium.copy(
                     color = MutedGray,
                     fontSize = 13.5.sp,
@@ -1412,7 +1405,7 @@ fun FamilyHarmonyView(
   onTriggerToast: (String, String) -> Unit
 ) {
   val context = LocalContext.current
-  val prefs = remember { context.getSharedPreferences("suqoon_prefs", Context.MODE_PRIVATE) }
+  val prefs = remember { context.getSharedPreferences("usra_prefs", Context.MODE_PRIVATE) }
 
   var stressLevel by remember {
     mutableStateOf(prefs.getFloat("ai_family_stress_level", 5f))
@@ -1820,7 +1813,7 @@ fun FamilyHarmonyView(
                   horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                   Text(
-                    text = "Suqoon AI is matching stress indexes with collective family time gaps...",
+                    text = "Usra AI is matching stress indexes with collective family time gaps...",
                     fontSize = 12.5.sp,
                     color = MutedGray,
                     fontWeight = FontWeight.SemiBold,
@@ -3038,7 +3031,7 @@ fun WeeklyTrendsChartCard(
   weeklyDays: List<String>
 ) {
   val context = LocalContext.current
-  val prefs = remember { context.getSharedPreferences("suqoon_prefs", Context.MODE_PRIVATE) }
+  val prefs = remember { context.getSharedPreferences("usra_prefs", Context.MODE_PRIVATE) }
   
   var viewMode by rememberSaveable { mutableStateOf("Weekly") } // "Weekly" or "Monthly"
 
@@ -4269,612 +4262,918 @@ fun DeviceRow(
   }
 }
 
-private enum class UsraChatSender {
-  AI,
-  USER
+// ==========================================
+// FAMILY FEED COMPONENT AND RELATED MODELS
+// ==========================================
+
+enum class FeedItemType {
+    QUEST_COMPLETED,
+    MILESTONE_REACHED,
+    ACTIVITY_LOGGED,
+    MEMBER_STREAK
 }
 
-private data class UsraChatMessage(
-  val sender: UsraChatSender,
-  val text: String
+data class FamilyFeedItem(
+    val id: String,
+    val authorName: String,
+    val avatarInitials: String,
+    val avatarColorName: String,
+    val type: FeedItemType,
+    val title: String,
+    val content: String,
+    val timestamp: String,
+    val iconEmoji: String,
+    val initialCheers: Int = 0,
+    val initialClaps: Int = 0,
+    val initialFlames: Int = 0,
+    val hasPhoto: Boolean = false,
+    val photoDescription: String? = null
 )
 
-@Composable
-fun UsraAIChatScreen(modifier: Modifier = Modifier) {
-  val scope = rememberCoroutineScope()
-  val userName = "Sami"
-
-  var stateOfMindLoggingEnabled by rememberSaveable { mutableStateOf(true) }
-  var screenTimeHours by rememberSaveable { mutableStateOf(7.5f) }
-  var sleepLogHours by rememberSaveable { mutableStateOf(5.5f) }
-  var messageInput by rememberSaveable { mutableStateOf("") }
-  var attachmentCount by rememberSaveable { mutableStateOf(0) }
-  var voiceDictationEnabled by rememberSaveable { mutableStateOf(false) }
-
-  val chatMessages = remember {
-    mutableStateListOf(
-      UsraChatMessage(
-        sender = UsraChatSender.AI,
-        text = "Assalamu alaikum Sami — I’m Usra AI, your family doctor and wellbeing guide. What’s the main concern today?"
-      ),
-      UsraChatMessage(
-        sender = UsraChatSender.USER,
-        text = "I’ve been feeling overwhelmed and I slept late again."
-      ),
-      UsraChatMessage(
-        sender = UsraChatSender.AI,
-        text = "Thanks for telling me. Let’s review your screen time, sleep, and any warning signs together before we decide next steps."
-      )
-    )
-  }
-
-  val overLimitHours = (screenTimeHours - 6f).coerceAtLeast(0f)
-  val highRisk = screenTimeHours >= 7f || sleepLogHours < 6f
-  val warningBackground = when {
-    overLimitHours > 0f -> SoftRed.copy(alpha = 0.16f)
-    highRisk -> LightAmber.copy(alpha = 0.34f)
-    else -> AccentGreenSoft.copy(alpha = 0.35f)
-  }
-  val warningBorder = when {
-    overLimitHours > 0f -> SoftRed.copy(alpha = 0.34f)
-    highRisk -> AmberBurnout.copy(alpha = 0.32f)
-    else -> AccentGreen.copy(alpha = 0.28f)
-  }
-  val warningTextColor = when {
-    overLimitHours > 0f -> Color(0xFFB91C1C)
-    highRisk -> Color(0xFFB45309)
-    else -> Color(0xFF047857)
-  }
-  val alertText = if (overLimitHours > 0f) {
-    "⚠️ Screen Time Limit Exceeded! You've exceeded your daily limit by ${"%.1f".format(overLimitHours)} hrs. Step away and reconnect with family."
-  } else {
-    "✅ Screen time is within the balance window. Keep your family-first rhythm going."
-  }
-
-  LazyColumn(
-    modifier = modifier.fillMaxSize(),
-    contentPadding = PaddingValues(horizontal = 20.dp, vertical = 16.dp),
-    verticalArrangement = Arrangement.spacedBy(18.dp)
-  ) {
-    item {
-      Spacer(modifier = Modifier.height(2.dp))
-      Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
-      ) {
-        Column(modifier = Modifier.weight(1f)) {
-          Text(
-            text = "Good morning, $userName 👋",
-            style = MaterialTheme.typography.headlineMedium.copy(
-              fontWeight = FontWeight.ExtraBold,
-              color = DarkSlate,
-              fontSize = 28.sp
-            )
-          )
-          Spacer(modifier = Modifier.height(4.dp))
-          Text(
-            text = "Usra AI is ready for triage, burnout checks, and mental wellbeing support.",
-            style = MaterialTheme.typography.bodyMedium.copy(
-              color = MutedGray,
-              fontSize = 14.sp,
-              lineHeight = 18.sp
-            )
-          )
-        }
-
-        Row(
-          verticalAlignment = Alignment.CenterVertically,
-          horizontalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-          Column(horizontalAlignment = Alignment.End) {
-            Text(
-              text = "State of Mind",
-              style = MaterialTheme.typography.labelMedium.copy(
-                color = DarkSlate,
-                fontWeight = FontWeight.SemiBold
-              )
-            )
-            Text(
-              text = if (stateOfMindLoggingEnabled) "Logging on" else "Paused",
-              style = MaterialTheme.typography.labelSmall.copy(
-                color = if (stateOfMindLoggingEnabled) AccentGreen else MutedGray,
-                fontWeight = FontWeight.Bold
-              )
-            )
-          }
-          Switch(
-            checked = stateOfMindLoggingEnabled,
-            onCheckedChange = { stateOfMindLoggingEnabled = it }
-          )
-
-          Box(
-            modifier = Modifier
-              .size(48.dp)
-              .clip(CircleShape)
-              .background(AccentBlueSoft),
-            contentAlignment = Alignment.Center
-          ) {
-            Text(
-              text = userName.take(1).uppercase(),
-              color = AccentBlue,
-              style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
-            )
-          }
-        }
-      }
+fun getFeedAvatarColor(colorName: String): Color {
+    return when (colorName) {
+        "blue" -> AccentBlue
+        "green" -> AccentGreen
+        "amber" -> AmberBurnout
+        "purple" -> Color(0xFF7C3AED)
+        else -> AccentBlue
     }
-
-    item {
-      ElevatedCard(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(24.dp),
-        colors = CardDefaults.elevatedCardColors(containerColor = Color.White)
-      ) {
-        Column(
-          modifier = Modifier.padding(20.dp),
-          verticalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
-          Surface(
-            color = SoftRed.copy(alpha = 0.16f),
-            shape = RoundedCornerShape(999.dp)
-          ) {
-            Text(
-              text = "🚨 HIGH RISK",
-              modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-              style = MaterialTheme.typography.labelMedium.copy(
-                color = Color(0xFFB91C1C),
-                fontWeight = FontWeight.ExtraBold,
-                letterSpacing = 0.8.sp
-              )
-            )
-          }
-
-          Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Text(
-              text = "Burnout AI Tracker Evaluation",
-              style = MaterialTheme.typography.titleLarge.copy(
-                fontWeight = FontWeight.ExtraBold,
-                color = DarkSlate,
-                fontSize = 22.sp
-              )
-            )
-            Text(
-              text = "Local simulation only — sliders update the triage state instantly on device.",
-              style = MaterialTheme.typography.bodySmall.copy(
-                color = MutedGray,
-                lineHeight = 16.sp
-              )
-            )
-          }
-
-          Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-              Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-              ) {
-                Text(
-                  text = "Screen Time Limit",
-                  style = MaterialTheme.typography.titleSmall.copy(
-                    fontWeight = FontWeight.SemiBold,
-                    color = DarkSlate
-                  )
-                )
-                Text(
-                  text = "${"%.1f".format(screenTimeHours)}h",
-                  style = MaterialTheme.typography.labelLarge.copy(
-                    fontWeight = FontWeight.Bold,
-                    color = AccentBlue
-                  )
-                )
-              }
-              Slider(
-                value = screenTimeHours,
-                onValueChange = { screenTimeHours = it },
-                valueRange = 0f..12f,
-                colors = SliderDefaults.colors(
-                  activeTrackColor = Color(0xFF06B6D4),
-                  thumbColor = Color(0xFF06B6D4),
-                  activeTickColor = Color(0xFF06B6D4),
-                  inactiveTrackColor = AccentBlueSoft
-                )
-              )
-            }
-
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-              Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-              ) {
-                Text(
-                  text = "Sleep Log Hours",
-                  style = MaterialTheme.typography.titleSmall.copy(
-                    fontWeight = FontWeight.SemiBold,
-                    color = DarkSlate
-                  )
-                )
-                Text(
-                  text = "${"%.1f".format(sleepLogHours)}h",
-                  style = MaterialTheme.typography.labelLarge.copy(
-                    fontWeight = FontWeight.Bold,
-                    color = AccentGreen
-                  )
-                )
-              }
-              Slider(
-                value = sleepLogHours,
-                onValueChange = { sleepLogHours = it },
-                valueRange = 0f..12f,
-                colors = SliderDefaults.colors(
-                  activeTrackColor = Color(0xFF10B981),
-                  thumbColor = Color(0xFF10B981),
-                  activeTickColor = Color(0xFF10B981),
-                  inactiveTrackColor = AccentGreenSoft
-                )
-              )
-            }
-          }
-
-          Surface(
-            modifier = Modifier.fillMaxWidth(),
-            color = warningBackground,
-            shape = RoundedCornerShape(18.dp),
-            border = BorderStroke(1.dp, warningBorder)
-          ) {
-            Row(
-              modifier = Modifier.padding(14.dp),
-              horizontalArrangement = Arrangement.spacedBy(12.dp),
-              verticalAlignment = Alignment.Top
-            ) {
-              Icon(
-                imageVector = Icons.Default.Warning,
-                contentDescription = null,
-                tint = warningTextColor,
-                modifier = Modifier.size(22.dp)
-              )
-              Text(
-                text = alertText,
-                style = MaterialTheme.typography.bodyMedium.copy(
-                  color = warningTextColor,
-                  fontWeight = FontWeight.Medium,
-                  lineHeight = 20.sp
-                )
-              )
-            }
-          }
-        }
-      }
-    }
-
-    item {
-      OutlinedCard(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(24.dp),
-        colors = CardDefaults.outlinedCardColors(containerColor = Color.White)
-      ) {
-        Column(
-          modifier = Modifier.padding(20.dp),
-          verticalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
-          Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
-          ) {
-            Column(modifier = Modifier.weight(1f)) {
-              Text(
-                text = "Usra AI Conversational Triage Interface",
-                style = MaterialTheme.typography.titleMedium.copy(
-                  fontWeight = FontWeight.ExtraBold,
-                  color = DarkSlate,
-                  fontSize = 18.sp
-                )
-              )
-              Text(
-                text = "Your family doctor chat history, kept local for the demo.",
-                style = MaterialTheme.typography.bodySmall.copy(
-                  color = MutedGray,
-                  lineHeight = 16.sp
-                )
-              )
-            }
-
-            Surface(
-              color = AccentBlueSoft,
-              shape = RoundedCornerShape(999.dp)
-            ) {
-              Text(
-                text = "Demo mode",
-                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                style = MaterialTheme.typography.labelSmall.copy(
-                  color = AccentBlue,
-                  fontWeight = FontWeight.Bold
-                )
-              )
-            }
-          }
-
-          Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            chatMessages.forEach { message ->
-              UsraChatBubble(message = message)
-            }
-          }
-        }
-      }
-    }
-
-    item {
-      Row(
-        modifier = Modifier
-          .fillMaxWidth()
-          .horizontalScroll(rememberScrollState()),
-        horizontalArrangement = Arrangement.spacedBy(10.dp)
-      ) {
-        UsraQuickActionPill(
-          text = "✨ AI Features",
-          icon = Icons.Default.AutoAwesome,
-          onClick = {
-            messageInput = "Show me the AI features available for triage and wellbeing."
-          }
-        )
-        UsraQuickActionPill(
-          text = "Add Daily Goal",
-          icon = Icons.Default.Add,
-          onClick = {
-            messageInput = "Add a daily goal: 10 minutes breathing, 20 minutes offline family time."
-          }
-        )
-        UsraQuickActionPill(
-          text = "Translate Lab Report",
-          icon = Icons.Default.Language,
-          onClick = {
-            messageInput = "Translate this lab report into simple Arabic and English."
-          }
-        )
-      }
-    }
-
-    item {
-      ElevatedCard(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(24.dp),
-        colors = CardDefaults.elevatedCardColors(containerColor = Color.White)
-      ) {
-        Column(
-          modifier = Modifier.padding(16.dp),
-          verticalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-          OutlinedTextField(
-            value = messageInput,
-            onValueChange = { messageInput = it },
-            modifier = Modifier.fillMaxWidth(),
-            placeholder = {
-              Text("Ask about symptoms, stress, sleep, medication, or a lab report...")
-            },
-            leadingIcon = {
-              IconButton(
-                onClick = {
-                  val newVoiceState = !voiceDictationEnabled
-                  voiceDictationEnabled = newVoiceState
-                  if (newVoiceState && messageInput.isBlank()) {
-                    messageInput = "I’m feeling stressed and need a quick triage check."
-                  }
-                }
-              ) {
-                Icon(
-                  imageVector = Icons.Default.Mic,
-                  contentDescription = "Voice dictation",
-                  tint = if (voiceDictationEnabled) AccentBlue else MutedGray
-                )
-              }
-            },
-            trailingIcon = {
-              Row(verticalAlignment = Alignment.CenterVertically) {
-                IconButton(
-                  onClick = { attachmentCount += 1 }
-                ) {
-                  Icon(
-                    imageVector = Icons.Default.Add,
-                    contentDescription = "Attach document",
-                    tint = if (attachmentCount > 0) AccentGreen else MutedGray
-                  )
-                }
-                IconButton(
-                  onClick = {
-                    val trimmed = messageInput.trim()
-                    if (trimmed.isNotEmpty()) {
-                      val outgoingText = buildString {
-                        append(trimmed)
-                        if (attachmentCount > 0) {
-                          append("\n📎 $attachmentCount attachment(s) ready for review")
-                        }
-                      }
-
-                      chatMessages.add(
-                        UsraChatMessage(
-                          sender = UsraChatSender.USER,
-                          text = outgoingText
-                        )
-                      )
-
-                      messageInput = ""
-                      val attachmentsSnapshot = attachmentCount
-                      attachmentCount = 0
-
-                      scope.launch {
-                        delay(850)
-                        val reply = when {
-                          outgoingText.contains("headache", ignoreCase = true) ->
-                            "Thanks, Sami. Headaches can worsen with sleep debt and long screen sessions. If this is severe, sudden, or paired with fever, please seek in-person care."
-
-                          outgoingText.contains("stress", ignoreCase = true) || outgoingText.contains("overwhelmed", ignoreCase = true) ->
-                            "I hear you. Let’s slow the system down with one breathing minute, a water break, and a quick family check-in."
-
-                          outgoingText.contains("lab", ignoreCase = true) || outgoingText.contains("report", ignoreCase = true) ->
-                            "I can help summarize the report into plain language. If you share the key values, I’ll translate them clearly."
-
-                          attachmentsSnapshot > 0 ->
-                            "I received the attachment locally for the demo flow. I can review the document and guide the next step."
-
-                          else ->
-                            "Got it. I’m here with local triage guidance — tell me if the concern is pain, sleep, mood, medication, or a family stressor."
-                        }
-
-                        chatMessages.add(
-                          UsraChatMessage(
-                            sender = UsraChatSender.AI,
-                            text = reply
-                          )
-                        )
-                      }
-                    }
-                  }
-                ) {
-                  Icon(
-                    imageVector = Icons.AutoMirrored.Filled.Send,
-                    contentDescription = "Send message",
-                    tint = AccentBlue
-                  )
-                }
-              }
-            },
-            singleLine = false,
-            minLines = 2,
-            maxLines = 4,
-            shape = RoundedCornerShape(20.dp),
-            colors = OutlinedTextFieldDefaults.colors(
-              focusedBorderColor = AccentBlue,
-              unfocusedBorderColor = Color(0xFFE2E8F0),
-              focusedContainerColor = Color.White,
-              unfocusedContainerColor = Color.White,
-              cursorColor = AccentBlue
-            )
-          )
-
-          Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-          ) {
-            Text(
-              text = if (voiceDictationEnabled) "🎙️ Voice dictation is active" else "Tap the mic for voice dictation",
-              style = MaterialTheme.typography.labelMedium.copy(
-                color = if (voiceDictationEnabled) AccentBlue else MutedGray,
-                fontWeight = FontWeight.Medium
-              )
-            )
-
-            Text(
-              text = if (attachmentCount > 0) "📎 $attachmentCount document(s) ready" else "Attachments stay local in demo mode",
-              style = MaterialTheme.typography.labelSmall.copy(
-                color = if (attachmentCount > 0) AccentGreen else MutedGray,
-                fontWeight = FontWeight.SemiBold
-              )
-            )
-          }
-
-          if (stateOfMindLoggingEnabled) {
-            Surface(
-              color = AccentBlueSoft.copy(alpha = 0.45f),
-              shape = RoundedCornerShape(16.dp)
-            ) {
-              Text(
-                text = "State of Mind logging is enabled. Mood notes can be captured from this demo screen.",
-                modifier = Modifier.padding(12.dp),
-                style = MaterialTheme.typography.bodySmall.copy(
-                  color = AccentBlue,
-                  lineHeight = 16.sp
-                )
-              )
-            }
-          }
-        }
-      }
-    }
-
-    item {
-      Spacer(modifier = Modifier.height(8.dp))
-    }
-  }
 }
 
-@Composable
-private fun UsraChatBubble(message: UsraChatMessage) {
-  val isUser = message.sender == UsraChatSender.USER
-  val bubbleColor = if (isUser) AccentBlueSoft else OffWhite
-  val bubbleBorder = if (isUser) AccentBlueSoft else Color(0xFFE5E7EB)
-  val textColor = if (isUser) DarkSlate else DarkSlate
-
-  Column(
-    modifier = Modifier.fillMaxWidth(),
-    horizontalAlignment = if (isUser) Alignment.End else Alignment.Start
-  ) {
-    Text(
-      text = if (isUser) "You" else "Usra AI",
-      style = MaterialTheme.typography.labelSmall.copy(
-        color = if (isUser) AccentBlue else AccentGreen,
-        fontWeight = FontWeight.Bold,
-        letterSpacing = 0.4.sp
-      )
-    )
-    Spacer(modifier = Modifier.height(4.dp))
-    Surface(
-      color = bubbleColor,
-      shape = RoundedCornerShape(
-        topStart = 22.dp,
-        topEnd = 22.dp,
-        bottomStart = if (isUser) 22.dp else 8.dp,
-        bottomEnd = if (isUser) 8.dp else 22.dp
-      ),
-      border = BorderStroke(1.dp, bubbleBorder)
-    ) {
-      Text(
-        text = message.text,
-        modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
-        style = MaterialTheme.typography.bodyMedium.copy(
-          color = textColor,
-          lineHeight = 20.sp
-        )
-      )
+fun saveUserFeedItems(context: Context, items: List<FamilyFeedItem>) {
+    val prefs = context.getSharedPreferences("usra_prefs", Context.MODE_PRIVATE)
+    val serialized = items.joinToString("##") { item ->
+        val typeStr = item.type.name
+        "${item.id}|${item.authorName}|${item.avatarInitials}|${item.avatarColorName}|${typeStr}|${item.title}|${item.content}|${item.timestamp}|${item.iconEmoji}|${item.hasPhoto}|${item.photoDescription ?: ""}"
     }
-  }
+    prefs.edit().putString("usra_user_feed_items", serialized).apply()
 }
 
-@Composable
-private fun UsraQuickActionPill(
-  text: String,
-  icon: androidx.compose.ui.graphics.vector.ImageVector,
-  onClick: () -> Unit
-) {
-  AssistChip(
-    onClick = onClick,
-    label = {
-      Text(
-        text = text,
-        maxLines = 1,
-        overflow = TextOverflow.Ellipsis,
-        style = MaterialTheme.typography.labelMedium.copy(
-          fontWeight = FontWeight.SemiBold
-        )
-      )
-    },
-    leadingIcon = {
-      Icon(
-        imageVector = icon,
-        contentDescription = null,
-        modifier = Modifier.size(18.dp)
-      )
-    },
-    shape = RoundedCornerShape(999.dp),
-    colors = AssistChipDefaults.assistChipColors(
-      containerColor = Color.White,
-      labelColor = DarkSlate,
-      leadingIconContentColor = AccentBlue
+fun loadUserFeedItems(context: Context): List<FamilyFeedItem> {
+    val prefs = context.getSharedPreferences("usra_prefs", Context.MODE_PRIVATE)
+    val serialized = prefs.getString("usra_user_feed_items", null) ?: return emptyList()
+    if (serialized.isEmpty()) return emptyList()
+    
+    return try {
+        serialized.split("##").mapNotNull { line ->
+            val parts = line.split("|")
+            if (parts.size >= 9) {
+                FamilyFeedItem(
+                    id = parts[0],
+                    authorName = parts[1],
+                    avatarInitials = parts[2],
+                    avatarColorName = parts[3],
+                    type = FeedItemType.valueOf(parts[4]),
+                    title = parts[5],
+                    content = parts[6],
+                    timestamp = parts[7],
+                    iconEmoji = parts[8],
+                    hasPhoto = parts.getOrNull(9)?.toBoolean() ?: false,
+                    photoDescription = parts.getOrNull(10)?.takeIf { it.isNotEmpty() }
+                )
+            } else null
+        }
+    } catch (e: Exception) {
+        emptyList()
+    }
+}
+
+val defaultFeedItems = listOf(
+    FamilyFeedItem(
+        id = "1",
+        authorName = "Dad",
+        avatarInitials = "D",
+        avatarColorName = "amber",
+        type = FeedItemType.MILESTONE_REACHED,
+        title = "🏆 Screen Reduction Master!",
+        content = "Dad has kept his screen time under 4.5 hours for 5 consecutive days! Let's help him keep the streak alive.",
+        timestamp = "2 hours ago",
+        iconEmoji = "🏆",
+        initialCheers = 8,
+        initialClaps = 12,
+        initialFlames = 6,
+        hasPhoto = false
     ),
-    border = BorderStroke(1.dp, Color(0xFFE2E8F0))
-  )
+    FamilyFeedItem(
+        id = "2",
+        authorName = "Sami",
+        avatarInitials = "S",
+        avatarColorName = "blue",
+        type = FeedItemType.QUEST_COMPLETED,
+        title = "🧘 Completed 'Solo Box Breathing' Quest",
+        content = "Took 5 minutes off between my assignments to do deep box breathing. My brain feels completely reset!",
+        timestamp = "4 hours ago",
+        iconEmoji = "🧘",
+        initialCheers = 5,
+        initialClaps = 6,
+        initialFlames = 3,
+        hasPhoto = true,
+        photoDescription = "Cozy desk snapshot with breathing timer"
+    ),
+    FamilyFeedItem(
+        id = "3",
+        authorName = "Mom",
+        avatarInitials = "M",
+        avatarColorName = "green",
+        type = FeedItemType.ACTIVITY_LOGGED,
+        title = "🍲 Shared Family dinner: No Phones!",
+        content = "Cooked a delicious curry together with Sami. We put all of our phones in the detox basket for 1.5 hours!",
+        timestamp = "Yesterday",
+        iconEmoji = "🍲",
+        initialCheers = 15,
+        initialClaps = 18,
+        initialFlames = 9,
+        hasPhoto = false
+    ),
+    FamilyFeedItem(
+        id = "4",
+        authorName = "Usra",
+        avatarInitials = "U",
+        avatarColorName = "purple",
+        type = FeedItemType.MILESTONE_REACHED,
+        title = "✨ Collective Harmony Peak!",
+        content = "Our collective Family Harmony Index reached 88/100 yesterday evening! Great job communicating screen-free.",
+        timestamp = "Yesterday",
+        iconEmoji = "✨",
+        initialCheers = 20,
+        initialClaps = 24,
+        initialFlames = 12,
+        hasPhoto = false
+    ),
+    FamilyFeedItem(
+        id = "5",
+        authorName = "Dad",
+        avatarInitials = "D",
+        avatarColorName = "amber",
+        type = FeedItemType.QUEST_COMPLETED,
+        title = "🚶‍♂️ Finished 'Evening Family Stroll' Quest",
+        content = "Walked around the community park with Mom. The cool air was wonderful, absolutely zero screen distractions.",
+        timestamp = "2 days ago",
+        iconEmoji = "🚶‍♂️",
+        initialCheers = 6,
+        initialClaps = 9,
+        initialFlames = 2,
+        hasPhoto = true,
+        photoDescription = "Evening sky sunset silhouette"
+    )
+)
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun FamilyFeedView(
+    currentUserDisplayName: String,
+    onTriggerToast: (String, String) -> Unit
+) {
+    val context = LocalContext.current
+    val prefs = remember { context.getSharedPreferences("usra_prefs", Context.MODE_PRIVATE) }
+    
+    var userItems by remember {
+        mutableStateOf(loadUserFeedItems(context))
+    }
+    
+    val allItems = remember(userItems) {
+        userItems + defaultFeedItems
+    }
+    
+    var selectedFilter by remember { mutableStateOf("All") }
+    var isSharePanelExpanded by remember { mutableStateOf(false) }
+    
+    // Form States
+    var shareAuthor by remember { mutableStateOf(currentUserDisplayName) }
+    var shareCategory by remember { mutableStateOf("🍲 Cooking") }
+    var shareContent by remember { mutableStateOf("") }
+    var shareHasPhoto by remember { mutableStateOf(false) }
+    
+    val categoryEmojis = mapOf(
+        "🍲 Cooking" to "🍲",
+        "🚶‍♂️ Stroll" to "🚶‍♂️",
+        "🧘 Mindfulness" to "🧘",
+        "🎲 Boardgames" to "🎲",
+        "🏆 Goal" to "🏆"
+    )
+    
+    val categoryTitles = mapOf(
+        "🍲 Cooking" to "Shared Cooking Together!",
+        "🚶‍♂️ Stroll" to "Shared Family Walk!",
+        "🧘 Mindfulness" to "Completed Mindfulness Quest!",
+        "🎲 Boardgames" to "Played a Boardgame Together!",
+        "🏆 Goal" to "Reached a Wellness Milestone!"
+    )
+    
+    val filteredItems = remember(allItems, selectedFilter) {
+        when (selectedFilter) {
+            "Quests" -> allItems.filter { it.type == FeedItemType.QUEST_COMPLETED }
+            "Milestones" -> allItems.filter { it.type == FeedItemType.MILESTONE_REACHED }
+            "Shared" -> allItems.filter { it.type == FeedItemType.ACTIVITY_LOGGED || it.type == FeedItemType.MEMBER_STREAK }
+            else -> allItems
+        }
+    }
+    
+    LazyColumn(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(horizontal = 20.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        item {
+            Spacer(modifier = Modifier.height(16.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "Family Feed",
+                        style = MaterialTheme.typography.titleLarge.copy(
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 24.sp,
+                            color = DarkSlate
+                        )
+                    )
+                    Text(
+                        text = "Celebrating shared offline milestones",
+                        style = MaterialTheme.typography.bodyMedium.copy(
+                            color = MutedGray,
+                            fontSize = 14.sp
+                        )
+                    )
+                }
+                
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(Color(0xFFF3E8FF))
+                        .padding(horizontal = 10.dp, vertical = 6.dp)
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Group,
+                            contentDescription = null,
+                            tint = Color(0xFF7C3AED),
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Text(
+                            text = "3 Online",
+                            color = Color(0xFF7C3AED),
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+            }
+        }
+        
+        item {
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .shadow(2.dp, RoundedCornerShape(24.dp))
+                    .clip(RoundedCornerShape(24.dp))
+                    .border(1.dp, Color(0xFFECEFF3), RoundedCornerShape(24.dp))
+                    .testTag("share_activity_card"),
+                colors = CardDefaults.cardColors(containerColor = Color.White)
+            ) {
+                Column(modifier = Modifier.padding(18.dp)) {
+                    if (!isSharePanelExpanded) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { isSharePanelExpanded = true },
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(40.dp)
+                                        .clip(CircleShape)
+                                        .background(Color(0xFFF3E8FF)),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Filled.Share,
+                                        contentDescription = "Share",
+                                        tint = Color(0xFF7C3AED),
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                }
+                                Column {
+                                    Text(
+                                        text = "Share an offline activity",
+                                        style = MaterialTheme.typography.titleMedium.copy(
+                                            fontWeight = FontWeight.Bold,
+                                            color = DarkSlate,
+                                            fontSize = 15.sp
+                                        )
+                                    )
+                                    Text(
+                                        text = "Keep the family motivated & balanced",
+                                        style = MaterialTheme.typography.bodySmall.copy(
+                                            color = MutedGray,
+                                            fontSize = 12.sp
+                                        )
+                                    )
+                                }
+                            }
+                            Icon(
+                                imageVector = Icons.Default.Add,
+                                contentDescription = "Expand Share Panel",
+                                tint = Color(0xFF7C3AED)
+                            )
+                        }
+                    } else {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "Share wellness moment",
+                                style = MaterialTheme.typography.titleMedium.copy(
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = DarkSlate,
+                                    fontSize = 16.sp
+                                )
+                            )
+                            IconButton(
+                                onClick = { isSharePanelExpanded = false }
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Close,
+                                    contentDescription = "Collapse Share Panel",
+                                    tint = MutedGray,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+                        }
+                        
+                        Spacer(modifier = Modifier.height(12.dp))
+                        
+                        Text(
+                            text = "Posting as:",
+                            style = MaterialTheme.typography.labelMedium.copy(
+                                fontWeight = FontWeight.Bold,
+                                color = DarkSlate
+                            )
+                        )
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            val authors = listOf(currentUserDisplayName, "Mom", "Dad")
+                            authors.forEach { author ->
+                                val isSelected = shareAuthor == author
+                                Box(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .clip(RoundedCornerShape(10.dp))
+                                        .background(if (isSelected) Color(0xFFF3E8FF) else Color(0xFFF1F3F5))
+                                        .border(
+                                            width = if (isSelected) 1.dp else 0.dp,
+                                            color = if (isSelected) Color(0xFF7C3AED) else Color.Transparent,
+                                            shape = RoundedCornerShape(10.dp)
+                                        )
+                                        .clickable { shareAuthor = author }
+                                        .padding(vertical = 8.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = author,
+                                        color = if (isSelected) Color(0xFF7C3AED) else MutedGray,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 13.sp
+                                    )
+                                }
+                            }
+                        }
+                        
+                        Spacer(modifier = Modifier.height(12.dp))
+                        
+                        Text(
+                            text = "What did you do?",
+                            style = MaterialTheme.typography.labelMedium.copy(
+                                fontWeight = FontWeight.Bold,
+                                color = DarkSlate
+                            )
+                        )
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            categoryEmojis.keys.forEach { cat ->
+                                val isSelected = shareCategory == cat
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(12.dp))
+                                        .background(if (isSelected) Color(0xFFE1EFF9) else Color(0xFFF1F3F5))
+                                        .border(
+                                            width = if (isSelected) 1.dp else 0.dp,
+                                            color = if (isSelected) AccentBlue else Color.Transparent,
+                                            shape = RoundedCornerShape(12.dp)
+                                        )
+                                        .clickable { shareCategory = cat }
+                                        .padding(horizontal = 12.dp, vertical = 8.dp)
+                                ) {
+                                    Text(
+                                        text = cat,
+                                        color = if (isSelected) AccentBlue else MutedGray,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 12.sp
+                                    )
+                                }
+                            }
+                        }
+                        
+                        Spacer(modifier = Modifier.height(14.dp))
+                        
+                        OutlinedTextField(
+                            value = shareContent,
+                            onValueChange = { shareContent = it },
+                            placeholder = { Text("What did you do? e.g., Played Monopoly screen-free!", fontSize = 13.sp) },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(80.dp)
+                                .testTag("share_content_input"),
+                            shape = RoundedCornerShape(12.dp),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = Color(0xFF7C3AED),
+                                unfocusedBorderColor = Color(0xFFECEFF3)
+                            ),
+                            textStyle = MaterialTheme.typography.bodyMedium.copy(fontSize = 13.sp)
+                        )
+                        
+                        Spacer(modifier = Modifier.height(10.dp))
+                        
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.CameraAlt,
+                                    contentDescription = null,
+                                    tint = AccentGreen,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Text(
+                                    text = "Attach photo memory",
+                                    fontSize = 12.5.sp,
+                                    color = DarkSlate,
+                                    fontWeight = FontWeight.Medium
+                                )
+                            }
+                            Switch(
+                                checked = shareHasPhoto,
+                                onCheckedChange = { shareHasPhoto = it },
+                                colors = SwitchDefaults.colors(
+                                    checkedThumbColor = Color.White,
+                                    checkedTrackColor = AccentGreen,
+                                    uncheckedThumbColor = MutedGray,
+                                    uncheckedTrackColor = Color(0xFFE2E8F0)
+                                ),
+                                modifier = Modifier.testTag("photo_attachment_switch")
+                            )
+                        }
+                        
+                        Spacer(modifier = Modifier.height(14.dp))
+                        
+                        Button(
+                            onClick = {
+                                if (shareContent.trim().isEmpty()) {
+                                    onTriggerToast("⚠️ Please enter what you shared!", "error")
+                                    return@Button
+                                }
+                                val authorColorName = when (shareAuthor) {
+                                    "Mom" -> "green"
+                                    "Dad" -> "amber"
+                                    else -> "blue"
+                                }
+                                val authorInitials = if (shareAuthor.isNotEmpty()) shareAuthor.take(1).uppercase() else "U"
+                                val newFeedItem = FamilyFeedItem(
+                                    id = System.currentTimeMillis().toString(),
+                                    authorName = shareAuthor,
+                                    avatarInitials = authorInitials,
+                                    avatarColorName = authorColorName,
+                                    type = FeedItemType.ACTIVITY_LOGGED,
+                                    title = categoryTitles[shareCategory] ?: "Shared a wellness activity!",
+                                    content = shareContent.trim(),
+                                    timestamp = "Just now",
+                                    iconEmoji = categoryEmojis[shareCategory] ?: "✨",
+                                    initialCheers = 0,
+                                    initialClaps = 0,
+                                    initialFlames = 0,
+                                    hasPhoto = shareHasPhoto,
+                                    photoDescription = if (shareHasPhoto) "Shared wellness moment: $shareCategory" else null
+                                )
+                                val updatedList = listOf(newFeedItem) + userItems
+                                userItems = updatedList
+                                saveUserFeedItems(context, updatedList)
+                                
+                                shareContent = ""
+                                shareHasPhoto = false
+                                isSharePanelExpanded = false
+                                
+                                onTriggerToast("🎉 Posted successfully to the Family Feed!", "sync")
+                            },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(44.dp)
+                                .testTag("post_activity_button"),
+                            shape = RoundedCornerShape(12.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF7C3AED))
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.Send,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Text("Post to Family Feed", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        
+        item {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                val filters = listOf("All", "Quests", "Milestones", "Shared")
+                filters.forEach { filterName ->
+                    val isSelected = selectedFilter == filterName
+                    val bg = if (isSelected) Color(0xFF7C3AED) else Color.White
+                    val textCol = if (isSelected) Color.White else MutedGray
+                    val borderCol = if (isSelected) Color.Transparent else Color(0xFFECEFF3)
+                    
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(20.dp))
+                            .background(bg)
+                            .border(1.dp, borderCol, RoundedCornerShape(20.dp))
+                            .clickable { selectedFilter = filterName }
+                            .padding(horizontal = 14.dp, vertical = 7.dp)
+                    ) {
+                        Text(
+                            text = filterName,
+                            color = textCol,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 12.5.sp
+                        )
+                    }
+                }
+            }
+        }
+        
+        if (filteredItems.isEmpty()) {
+            item {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 32.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Icon(
+                            imageVector = Icons.Filled.RssFeed,
+                            contentDescription = null,
+                            tint = MutedGray.copy(alpha = 0.4f),
+                            modifier = Modifier.size(48.dp)
+                        )
+                        Spacer(modifier = Modifier.height(10.dp))
+                        Text(
+                            text = "No activities in this category yet",
+                            style = MaterialTheme.typography.bodyMedium.copy(color = MutedGray)
+                        )
+                    }
+                }
+            }
+        } else {
+            items(filteredItems.size, key = { filteredItems[it].id }) { index ->
+                val item = filteredItems[index]
+                
+                var cheersCount by remember(item.id) {
+                    mutableStateOf(prefs.getInt("feed_cheers_${item.id}", item.initialCheers))
+                }
+                var clapsCount by remember(item.id) {
+                    mutableStateOf(prefs.getInt("feed_claps_${item.id}", item.initialClaps))
+                }
+                var flamesCount by remember(item.id) {
+                    mutableStateOf(prefs.getInt("feed_flames_${item.id}", item.initialFlames))
+                }
+                
+                var hasCheered by remember(item.id) {
+                    mutableStateOf(prefs.getBoolean("feed_cheered_${item.id}", false))
+                }
+                var hasClapped by remember(item.id) {
+                    mutableStateOf(prefs.getBoolean("feed_clapped_${item.id}", false))
+                }
+                var hasFlamed by remember(item.id) {
+                    mutableStateOf(prefs.getBoolean("feed_flamed_${item.id}", false))
+                }
+                
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .shadow(1.dp, RoundedCornerShape(22.dp))
+                        .clip(RoundedCornerShape(22.dp))
+                        .border(1.dp, Color(0xFFF1F3F5), RoundedCornerShape(22.dp)),
+                    colors = CardDefaults.cardColors(containerColor = Color.White)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(16.dp),
+                        horizontalArrangement = Arrangement.spacedBy(14.dp)
+                    ) {
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(40.dp)
+                                    .clip(CircleShape)
+                                    .background(getFeedAvatarColor(item.avatarColorName).copy(alpha = 0.15f)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = item.avatarInitials,
+                                    color = getFeedAvatarColor(item.avatarColorName),
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 15.sp
+                                )
+                            }
+                            Box(
+                                modifier = Modifier
+                                    .width(2.dp)
+                                    .height(50.dp)
+                                    .background(Color(0xFFE2E8F0))
+                            )
+                        }
+                        
+                        Column(
+                            modifier = Modifier.weight(1f),
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    Text(
+                                        text = item.authorName,
+                                        style = MaterialTheme.typography.titleMedium.copy(
+                                            fontWeight = FontWeight.Bold,
+                                            color = DarkSlate,
+                                            fontSize = 14.5.sp
+                                        )
+                                    )
+                                    Box(
+                                        modifier = Modifier
+                                            .size(4.dp)
+                                            .clip(CircleShape)
+                                            .background(MutedGray)
+                                    )
+                                    Text(
+                                        text = item.timestamp,
+                                        style = MaterialTheme.typography.bodySmall.copy(
+                                            color = MutedGray,
+                                            fontSize = 12.sp
+                                        )
+                                    )
+                                }
+                                
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(getFeedAvatarColor(item.avatarColorName).copy(alpha = 0.12f))
+                                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                                ) {
+                                    Text(
+                                        text = item.iconEmoji,
+                                        fontSize = 12.sp
+                                    )
+                                }
+                            }
+                            
+                            Text(
+                                text = item.title,
+                                style = MaterialTheme.typography.titleMedium.copy(
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = DarkSlate,
+                                    fontSize = 15.5.sp
+                                )
+                            )
+                            
+                            Text(
+                                text = item.content,
+                                style = MaterialTheme.typography.bodyMedium.copy(
+                                    color = DarkSlate.copy(alpha = 0.85f),
+                                    fontSize = 13.5.sp,
+                                    lineHeight = 19.sp
+                                )
+                            )
+                            
+                            if (item.hasPhoto) {
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Card(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .shadow(3.dp, RoundedCornerShape(14.dp))
+                                        .clip(RoundedCornerShape(14.dp))
+                                        .border(1.dp, Color(0xFFE2E8F0), RoundedCornerShape(14.dp)),
+                                    colors = CardDefaults.cardColors(containerColor = Color.White)
+                                ) {
+                                    Column(
+                                        modifier = Modifier.padding(10.dp),
+                                        horizontalAlignment = Alignment.CenterHorizontally
+                                    ) {
+                                        Box(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .height(130.dp)
+                                                .clip(RoundedCornerShape(10.dp))
+                                                .background(
+                                                    Brush.linearGradient(
+                                                        colors = when (item.avatarColorName) {
+                                                            "blue" -> listOf(Color(0xFF6EE7B7), Color(0xFF3B82F6))
+                                                            "green" -> listOf(Color(0xFFA7F3D0), Color(0xFF059669))
+                                                            "amber" -> listOf(Color(0xFFFDE68A), Color(0xFFD97706))
+                                                            else -> listOf(Color(0xFFC084FC), Color(0xFF7C3AED))
+                                                        }
+                                                    )
+                                                ),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                                Icon(
+                                                    imageVector = Icons.Default.CameraAlt,
+                                                    contentDescription = null,
+                                                    tint = Color.White.copy(alpha = 0.9f),
+                                                    modifier = Modifier.size(32.dp)
+                                                )
+                                                Spacer(modifier = Modifier.height(4.dp))
+                                                Text(
+                                                    text = "Wellness Snapshot Captured!",
+                                                    color = Color.White,
+                                                    fontSize = 12.sp,
+                                                    fontWeight = FontWeight.Bold
+                                                )
+                                            }
+                                        }
+                                        Spacer(modifier = Modifier.height(8.dp))
+                                        Text(
+                                            text = item.photoDescription ?: "Family balanced time",
+                                            style = MaterialTheme.typography.bodySmall.copy(
+                                                fontFamily = FontFamily.Serif,
+                                                fontWeight = FontWeight.Medium,
+                                                color = DarkSlate,
+                                                fontSize = 11.5.sp
+                                            )
+                                        )
+                                    }
+                                }
+                            }
+                            
+                            Spacer(modifier = Modifier.height(6.dp))
+                            HorizontalDivider(color = Color(0xFFF1F3F5), thickness = 1.dp)
+                            Spacer(modifier = Modifier.height(4.dp))
+                            
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(12.dp))
+                                        .background(if (hasCheered) Color(0xFFFEE2E2) else Color.Transparent)
+                                        .clickable {
+                                            hasCheered = !hasCheered
+                                            cheersCount += if (hasCheered) 1 else -1
+                                            prefs.edit()
+                                                .putInt("feed_cheers_${item.id}", cheersCount)
+                                                .putBoolean("feed_cheered_${item.id}", hasCheered)
+                                                .apply()
+                                            if (hasCheered) {
+                                                onTriggerToast("❤️ Cheered Dad, Sami, and Mom's progress!", "sync")
+                                            }
+                                        }
+                                        .padding(horizontal = 10.dp, vertical = 6.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = if (hasCheered) Icons.Filled.Favorite else Icons.Outlined.FavoriteBorder,
+                                        contentDescription = "Cheers",
+                                        tint = if (hasCheered) SoftRed else MutedGray,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Text(
+                                        text = "$cheersCount",
+                                        color = if (hasCheered) SoftRed else MutedGray,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 12.sp
+                                    )
+                                }
+                                
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(12.dp))
+                                        .background(if (hasClapped) Color(0xFFFEF3C7) else Color.Transparent)
+                                        .clickable {
+                                            hasClapped = !hasClapped
+                                            clapsCount += if (hasClapped) 1 else -1
+                                            prefs.edit()
+                                                .putInt("feed_claps_${item.id}", clapsCount)
+                                                .putBoolean("feed_clapped_${item.id}", hasClapped)
+                                                .apply()
+                                            if (hasClapped) {
+                                                onTriggerToast("👏 Applauded the screen-free milestone!", "goal")
+                                            }
+                                        }
+                                        .padding(horizontal = 10.dp, vertical = 6.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = if (hasClapped) Icons.Filled.ThumbUp else Icons.Outlined.ThumbUp,
+                                        contentDescription = "Claps",
+                                        tint = if (hasClapped) AmberBurnout else MutedGray,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Text(
+                                        text = "$clapsCount",
+                                        color = if (hasClapped) AmberBurnout else MutedGray,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 12.sp
+                                    )
+                                }
+                                
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(12.dp))
+                                        .background(if (hasFlamed) Color(0xFFE1EFF9) else Color.Transparent)
+                                        .clickable {
+                                            hasFlamed = !hasFlamed
+                                            flamesCount += if (hasFlamed) 1 else -1
+                                            prefs.edit()
+                                                .putInt("feed_flames_${item.id}", flamesCount)
+                                                .putBoolean("feed_flamed_${item.id}", hasFlamed)
+                                                .apply()
+                                            if (hasFlamed) {
+                                                onTriggerToast("🔥 Kept the family wellness momentum burning!", "sync")
+                                            }
+                                        }
+                                        .padding(horizontal = 10.dp, vertical = 6.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = if (hasFlamed) Icons.Filled.Whatshot else Icons.Outlined.Whatshot,
+                                        contentDescription = "Hot",
+                                        tint = if (hasFlamed) AccentBlue else MutedGray,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Text(
+                                        text = "$flamesCount",
+                                        color = if (hasFlamed) AccentBlue else MutedGray,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 12.sp
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        
+        item {
+            Spacer(modifier = Modifier.height(32.dp))
+        }
+    }
 }
 

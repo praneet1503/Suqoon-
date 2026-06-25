@@ -1,6 +1,7 @@
-package com.aistudio.suqoonplus.fmlbal.example
+package com.example
 
 import com.squareup.moshi.JsonClass
+import com.squareup.moshi.Json
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
@@ -15,7 +16,6 @@ import retrofit2.http.Query
 import retrofit2.http.Path
 import retrofit2.http.Header
 import android.util.Log
-import com.aistudio.suqoonplus.fmlbal.BuildConfig
 
 // Gemini Request/Response Models
 @JsonClass(generateAdapter = true)
@@ -164,7 +164,7 @@ object GeminiService {
         if (isGroqEnabled) {
             Log.d(TAG, "Calling Groq API for detox recommendations...")
             val messages = listOf(
-                GroqMessage(role = "system", content = "You are Suqoon AI, an empathetic digital wellness companion."),
+                GroqMessage(role = "system", content = "You are Usra AI, an empathetic digital wellness companion."),
                 GroqMessage(role = "user", content = prompt)
             )
             val request = GroqRequest(
@@ -191,7 +191,7 @@ object GeminiService {
             Log.d(TAG, "Calling Gemini API for detox recommendations...")
             val request = GeminiRequest(
                 contents = listOf(Content(parts = listOf(Part(text = prompt)))),
-                systemInstruction = Content(parts = listOf(Part(text = "You are Suqoon AI, an empathetic digital wellness companion.")))
+                systemInstruction = Content(parts = listOf(Part(text = "You are Usra AI, an empathetic digital wellness companion.")))
             )
             try {
                 val response = RetrofitClient.geminiService.generateContent(
@@ -243,7 +243,7 @@ object GeminiService {
         if (isGroqEnabled) {
             Log.d(TAG, "Calling Groq API for family recommendations...")
             val messages = listOf(
-                GroqMessage(role = "system", content = "You are Suqoon AI, an empathetic senior family relation and digital mindfulness coach."),
+                GroqMessage(role = "system", content = "You are Usra AI, an empathetic senior family relation and digital mindfulness coach."),
                 GroqMessage(role = "user", content = prompt)
             )
             val request = GroqRequest(
@@ -270,7 +270,7 @@ object GeminiService {
             Log.d(TAG, "Calling Gemini API for family recommendations...")
             val request = GeminiRequest(
                 contents = listOf(Content(parts = listOf(Part(text = prompt)))),
-                systemInstruction = Content(parts = listOf(Part(text = "You are Suqoon AI, an empathetic senior family relation and digital mindfulness coach.")))
+                systemInstruction = Content(parts = listOf(Part(text = "You are Usra AI, an empathetic senior family relation and digital mindfulness coach.")))
             )
             try {
                 val response = RetrofitClient.geminiService.generateContent(
@@ -308,7 +308,7 @@ object GeminiService {
         val isGeminiEnabled = isApiKeyConfigured(geminiApiKey, "MY_GEMINI_API_KEY")
 
         val prompt = """
-            You are Suqoon AI, an empathetic senior digital wellness and family relationship companion.
+            You are Usra AI, an empathetic senior digital wellness and family relationship companion.
             Based on the following personal and household metrics, generate exactly two highly relevant, creative, screen-free "Reconnection Quests" for this user and their family.
             
             Metrics:
@@ -334,7 +334,7 @@ object GeminiService {
         if (isGroqEnabled) {
             Log.d(TAG, "Calling Groq API for AI quests...")
             val messages = listOf(
-                GroqMessage(role = "system", content = "You are Suqoon AI, a precise offline habit generator."),
+                GroqMessage(role = "system", content = "You are Usra AI, a precise offline habit generator."),
                 GroqMessage(role = "user", content = prompt)
             )
             val request = GroqRequest(
@@ -355,7 +355,7 @@ object GeminiService {
             Log.d(TAG, "Calling Gemini API for AI quests...")
             val request = GeminiRequest(
                 contents = listOf(Content(parts = listOf(Part(text = prompt)))),
-                systemInstruction = Content(parts = listOf(Part(text = "You are Suqoon AI, a precise offline habit generator.")))
+                systemInstruction = Content(parts = listOf(Part(text = "You are Usra AI, a precise offline habit generator.")))
             )
             try {
                 val response = RetrofitClient.geminiService.generateContent(
