@@ -4,7 +4,19 @@ import android.os.Bundle
 import android.content.Context
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.enableEdgeToEdge
+import android.Manifest
+import android.app.AppOpsManager
+import android.app.usage.UsageStatsManager
+import android.content.Intent
+import android.hardware.Sensor
+import android.hardware.SensorEvent
+import android.hardware.SensorEventListener
+import android.hardware.SensorManager
+import android.os.Process
+import android.provider.Settings
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.*
@@ -48,6 +60,7 @@ import androidx.compose.ui.unit.sp
 import com.example.ui.theme.*
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.zIndex
 
@@ -56,37 +69,108 @@ class MainActivity : ComponentActivity() {
     super.onCreate(savedInstanceState)
     enableEdgeToEdge()
     setContent {
-      val context = LocalContext.current
-      val prefs = remember { context.getSharedPreferences("usra_prefs", Context.MODE_PRIVATE) }
-      var isDark by remember { mutableStateOf(prefs.getBoolean("dark_theme_enabled", false)) }
-
-      LaunchedEffect(isDark) {
-        ThemeConfig.isDarkTheme = isDark
-      }
-
-      MyApplicationTheme(darkTheme = isDark) {
-        UsraApp(
-          isDarkTheme = isDark,
-          onThemeToggle = {
-            val newValue = !isDark
-            isDark = newValue
-            prefs.edit().putBoolean("dark_theme_enabled", newValue).apply()
-          }
-        )
+      MyApplicationTheme(darkTheme = false) {
+        UsraApp()
       }
     }
   }
 }
 
+fun hasUsageStatsPermission(context: Context): Boolean {
+  val appOps = context.getSystemService(Context.APP_OPS_SERVICE) as AppOpsManager
+  val mode = appOps.checkOpNoThrow(
+    AppOpsManager.OPSTR_GET_USAGE_STATS,
+    Process.myUid(),
+    context.packageName
+  )
+  return mode == AppOpsManager.MODE_ALLOWED
+}
+
+fun getDeviceScreenTime(context: Context): Float {
+  if (!hasUsageStatsPermission(context)) return 0f
+  val usageStatsManager = context.getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
+  val calendar = java.util.Calendar.getInstance()
+  val endTime = calendar.timeInMillis
+  calendar.set(java.util.Calendar.HOUR_OF_DAY, 0)
+  calendar.set(java.util.Calendar.MINUTE, 0)
+  calendar.set(java.util.Calendar.SECOND, 0)
+  val startTime = calendar.timeInMillis
+
+  val stats = usageStatsManager.queryUsageStats(
+    UsageStatsManager.INTERVAL_DAILY,
+    startTime,
+    endTime
+  )
+  
+  var totalForegroundTime = 0L
+  stats?.forEach {
+    totalForegroundTime += it.totalTimeInForeground
+  }
+  
+  return (totalForegroundTime / (1000f * 60f * 60f)) // in hours
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun UsraApp(
-  isDarkTheme: Boolean = false,
-  onThemeToggle: () -> Unit = {}
-) {
+fun UsraApp() {
   val context = LocalContext.current
   val prefs = remember { context.getSharedPreferences("usra_prefs", Context.MODE_PRIVATE) }
   val coroutineScope = rememberCoroutineScope()
+
+  val cameraPermissionLauncher = rememberLauncherForActivityResult(
+    ActivityResultContracts.RequestPermission()
+  ) { isGranted: Boolean ->
+    // Ignored, just requesting on startup
+  }
+
+  var stepCount by remember { mutableStateOf(prefs.getInt("step_count", 0)) }
+
+  val activityPermissionLauncher = rememberLauncherForActivityResult(
+    ActivityResultContracts.RequestPermission()
+  ) { isGranted: Boolean ->
+    if (isGranted) {
+        val sensorManager = context.getSystemService(Context.SENSOR_SERVICE) as SensorManager
+        val stepSensor = sensorManager.getDefaultSensor(Sensor.TYPE_STEP_COUNTER)
+        stepSensor?.let { sensor ->
+            val listener = object : SensorEventListener {
+                override fun onSensorChanged(event: SensorEvent?) {
+                    event?.values?.firstOrNull()?.let { steps ->
+                        stepCount = steps.toInt()
+                        prefs.edit().putInt("step_count", stepCount).apply()
+                    }
+                }
+                override fun onAccuracyChanged(s: Sensor?, accuracy: Int) {}
+            }
+            sensorManager.registerListener(listener, sensor, SensorManager.SENSOR_DELAY_UI)
+        }
+    }
+  }
+
+  var screenTime by remember { 
+    mutableStateOf(prefs.getFloat("screen_time", 7.5f)) 
+  }
+
+  LaunchedEffect(Unit) {
+    cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
+    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+      activityPermissionLauncher.launch(Manifest.permission.ACTIVITY_RECOGNITION)
+    }
+    if (hasUsageStatsPermission(context)) {
+      val deviceTime = getDeviceScreenTime(context)
+      if (deviceTime > 0f) {
+          screenTime = deviceTime
+      }
+    } else {
+      // If we don't have permission, open settings
+      try {
+          context.startActivity(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS).apply {
+              addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+          })
+      } catch (e: Exception) {
+          e.printStackTrace()
+      }
+    }
+  }
 
   var currentTab by remember { 
     mutableStateOf(prefs.getInt("current_tab", 0)) 
@@ -141,9 +225,6 @@ fun UsraApp(
     mutableStateOf(prefs.getString("ai_quest_subtitle_2", "Help Mom with device-free cooking prep to unwind.") ?: "Help Mom with device-free cooking prep to unwind.")
   }
   var aiQuestsLoading by remember { mutableStateOf(false) }
-  var screenTime by remember { 
-    mutableStateOf(prefs.getFloat("screen_time", 7.5f)) 
-  }
   var sleepLog by remember { 
     mutableStateOf(prefs.getFloat("sleep_log", 5.5f)) 
   }
@@ -234,7 +315,7 @@ fun UsraApp(
                 elevation = 12.dp,
                 shape = BottomBarWithCutoutShape()
               ),
-            color = if (isDarkTheme) Color(0xFF1C1E1E) else Color.White,
+            color = Color.White,
             shape = BottomBarWithCutoutShape()
           ) {
             Row(
@@ -286,54 +367,6 @@ fun UsraApp(
             }
           }
 
-          // Options popup when clicking Plus (+) button
-          AnimatedVisibility(
-            visible = showPlusMenu,
-            enter = slideInVertically(initialOffsetY = { it / 2 }) + fadeIn(),
-            exit = slideOutVertically(targetOffsetY = { it / 2 }) + fadeOut(),
-            modifier = Modifier
-              .align(Alignment.BottomCenter)
-              .offset(y = (-80).dp)
-          ) {
-            Card(
-              colors = CardDefaults.cardColors(containerColor = if (isDarkTheme) Color(0xFF1C1E1E) else Color.White),
-              shape = RoundedCornerShape(20.dp),
-              elevation = CardDefaults.cardElevation(defaultElevation = 8.dp),
-              modifier = Modifier
-                .border(
-                  width = 1.dp,
-                  color = if (isDarkTheme) Color(0xFF2C2E2E) else AccentBlueSoft,
-                  shape = RoundedCornerShape(20.dp)
-                )
-                .clickable {
-                  showUsraAIChat = true
-                  showPlusMenu = false
-                }
-            ) {
-              Row(
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-              ) {
-                Box(
-                  modifier = Modifier
-                    .size(28.dp)
-                    .clip(CircleShape)
-                    .background(if (isDarkTheme) Color(0xFF2C2E2E) else AccentBlueSoft),
-                  contentAlignment = Alignment.Center
-                ) {
-                  Text("✨", fontSize = 14.sp)
-                }
-                Text(
-                  text = "Usra AI Assistant",
-                  fontWeight = FontWeight.Bold,
-                  color = DarkSlate,
-                  fontSize = 14.sp
-                )
-              }
-            }
-          }
-
           // Floating Action Button (+) centered inside the cutout/notch
           Box(
             modifier = Modifier
@@ -347,13 +380,13 @@ fun UsraApp(
                 )
               )
               .clickable {
-                showPlusMenu = !showPlusMenu
+                showUsraAIChat = true
               },
             contentAlignment = Alignment.Center
           ) {
             Icon(
-              imageVector = if (showPlusMenu) Icons.Default.Close else Icons.Default.Add,
-              contentDescription = "Menu Options",
+              imageVector = Icons.Default.Add,
+              contentDescription = "Open Usra AI",
               tint = Color.White,
               modifier = Modifier.size(28.dp)
             )
@@ -392,8 +425,7 @@ fun UsraApp(
               onSleepLogChange = { sleepLog = it },
               screenTimeGoal = screenTimeGoal,
               onScreenTimeGoalChange = { screenTimeGoal = it },
-              isDarkTheme = isDarkTheme,
-              onThemeToggle = onThemeToggle
+              stepCount = stepCount
             )
             1 -> FamilyHarmonyView(
               currentUserDisplayName = userName,
@@ -679,8 +711,7 @@ fun HomeDashboardView(
   onSleepLogChange: (Float) -> Unit,
   screenTimeGoal: Float,
   onScreenTimeGoalChange: (Float) -> Unit,
-  isDarkTheme: Boolean = false,
-  onThemeToggle: () -> Unit = {}
+  stepCount: Int
 ) {
   val context = LocalContext.current
   val prefs = remember { context.getSharedPreferences("usra_prefs", Context.MODE_PRIVATE) }
@@ -689,6 +720,20 @@ fun HomeDashboardView(
   }
   var aiLoading by remember { mutableStateOf(false) }
   val scope = rememberCoroutineScope()
+
+  var tts by remember { mutableStateOf<android.speech.tts.TextToSpeech?>(null) }
+  DisposableEffect(context) {
+    val textToSpeech = android.speech.tts.TextToSpeech(context) { status ->
+      if (status == android.speech.tts.TextToSpeech.SUCCESS) {
+        tts?.setLanguage(java.util.Locale.UK)
+      }
+    }
+    tts = textToSpeech
+    onDispose {
+      textToSpeech.stop()
+      textToSpeech.shutdown()
+    }
+  }
 
   var momScreenTime by remember { mutableStateOf(prefs.getFloat("mom_screen_time", 4.0f)) }
   var momSleepLog by remember { mutableStateOf(prefs.getFloat("mom_sleep_log", 7.0f)) }
@@ -797,27 +842,11 @@ fun HomeDashboardView(
             )
           )
         }
-        // Theme toggle button and Rounded profile placeholder avatar row
+        // Rounded profile placeholder avatar row
         Row(
           verticalAlignment = Alignment.CenterVertically,
           horizontalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-          IconButton(
-            onClick = onThemeToggle,
-            modifier = Modifier
-              .size(44.dp)
-              .shadow(2.dp, CircleShape)
-              .background(OffWhite, CircleShape)
-              .testTag("theme_toggle_button")
-          ) {
-            Icon(
-              imageVector = if (isDarkTheme) Icons.Default.LightMode else Icons.Default.DarkMode,
-              contentDescription = "Toggle Theme Mode",
-              tint = if (isDarkTheme) Color(0xFFF59E0B) else DarkSlate,
-              modifier = Modifier.size(20.dp)
-            )
-          }
-
           Box(
             modifier = Modifier
               .size(48.dp)
@@ -964,7 +993,7 @@ fun HomeDashboardView(
 
               Card(
                 colors = CardDefaults.cardColors(
-                  containerColor = if (isSelected) color.copy(alpha = 0.12f) else (if (ThemeConfig.isDarkTheme) Color(0xFF1C1E1E) else Color.White)
+                  containerColor = if (isSelected) color.copy(alpha = 0.12f) else Color.White
                 ),
                 shape = RoundedCornerShape(12.dp),
                 modifier = Modifier
@@ -972,7 +1001,7 @@ fun HomeDashboardView(
                   .clickable { selectedMember = memberName }
                   .border(
                     width = if (isSelected) 2.dp else 1.dp,
-                    color = if (isSelected) color else (if (ThemeConfig.isDarkTheme) Color(0xFF2C2E2E) else Color(0xFFECEFF3)),
+                    color = if (isSelected) color else Color(0xFFECEFF3),
                     shape = RoundedCornerShape(12.dp)
                   )
               ) {
@@ -1065,7 +1094,7 @@ fun HomeDashboardView(
             colors = SliderDefaults.colors(
               thumbColor = AccentBlue,
               activeTrackColor = AccentBlue,
-              inactiveTrackColor = if (ThemeConfig.isDarkTheme) Color(0xFF2C2E2E) else AccentBlueSoft
+              inactiveTrackColor = AccentBlueSoft
             ),
             modifier = Modifier.height(24.dp).testTag("screen_time_slider")
           )
@@ -1120,7 +1149,7 @@ fun HomeDashboardView(
             colors = SliderDefaults.colors(
               thumbColor = AccentGreen,
               activeTrackColor = AccentGreen,
-              inactiveTrackColor = if (ThemeConfig.isDarkTheme) Color(0xFF2C2E2E) else AccentGreenSoft
+              inactiveTrackColor = AccentGreenSoft
             ),
             modifier = Modifier.height(24.dp).testTag("sleep_log_slider")
           )
@@ -1275,29 +1304,8 @@ fun HomeDashboardView(
             verticalAlignment = Alignment.CenterVertically
           ) {
             Column(modifier = Modifier.weight(1f)) {
-              Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
-              ) {
-                Icon(
-                  imageVector = Icons.Filled.Spa,
-                  contentDescription = "AI Companion Icon",
-                  tint = Color(0xFF8B5CF6),
-                  modifier = Modifier.size(18.dp)
-                )
-                Text(
-                  text = "USRA AI",
-                  style = MaterialTheme.typography.labelSmall.copy(
-                    fontWeight = FontWeight.Bold,
-                    color = Color(0xFF7C3AED),
-                    fontSize = 11.sp,
-                    letterSpacing = 1.sp
-                  )
-                )
-              }
-              Spacer(modifier = Modifier.height(2.dp))
               Text(
-                text = "Personal Detox Coach",
+                text = "Usra AI",
                 style = MaterialTheme.typography.titleMedium.copy(
                   fontWeight = FontWeight.Bold,
                   color = DarkSlate,
@@ -1377,7 +1385,7 @@ fun HomeDashboardView(
             Column {
               if (aiRecommendations == null) {
                 Text(
-                  text = "Connect with Usra AI to evaluate your screen time (${"%.1f".format(screenTime)} hrs) and sleep duration (${"%.1f".format(sleepLog)} hrs) metrics. Our AI counselor will prompt 3 personalized physical replacement suggestions and detox habits for you.",
+                  text = "Connect with Usra AI to evaluate your screen time (${"%.1f".format(screenTime)} hrs) and sleep duration (${"%.1f".format(sleepLog)} hrs) metrics. Our AI counselor will prompt 3 personalized physical replacement suggestions and wellness habits for you.",
                   style = MaterialTheme.typography.bodyMedium.copy(
                     color = MutedGray,
                     fontSize = 13.5.sp,
@@ -1386,15 +1394,30 @@ fun HomeDashboardView(
                   modifier = Modifier.testTag("ai_tips_initial_message")
                 )
               } else {
-                Text(
-                  text = aiRecommendations ?: "",
-                  style = MaterialTheme.typography.bodyMedium.copy(
-                    color = DarkSlate,
-                    fontSize = 13.5.sp,
-                    lineHeight = 20.sp
-                  ),
-                  modifier = Modifier.testTag("ai_recommendations_content")
-                )
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Top) {
+                  Text(
+                    text = aiRecommendations ?: "",
+                    style = MaterialTheme.typography.bodyMedium.copy(
+                      color = DarkSlate,
+                      fontSize = 13.5.sp,
+                      lineHeight = 20.sp
+                    ),
+                    modifier = Modifier.testTag("ai_recommendations_content").weight(1f)
+                  )
+                  IconButton(
+                    onClick = {
+                      tts?.speak(aiRecommendations ?: "", android.speech.tts.TextToSpeech.QUEUE_FLUSH, null, null)
+                    },
+                    modifier = Modifier.size(24.dp).padding(start = 8.dp)
+                  ) {
+                    Icon(
+                      imageVector = Icons.AutoMirrored.Filled.VolumeUp,
+                      contentDescription = "Read out loud",
+                      tint = MutedGray,
+                      modifier = Modifier.size(16.dp)
+                    )
+                  }
+                }
               }
 
               Spacer(modifier = Modifier.height(12.dp))
@@ -1423,6 +1446,19 @@ fun HomeDashboardView(
                 ) {
                   Text(
                     text = "Sleep: ${"%.1f".format(sleepLog)} h",
+                    fontSize = 10.sp,
+                    color = MutedGray,
+                    fontWeight = FontWeight.Bold
+                  )
+                }
+                Box(
+                  modifier = Modifier
+                    .clip(RoundedCornerShape(6.dp))
+                    .background(Color(0xFFEEF2F6))
+                    .padding(horizontal = 6.dp, vertical = 3.dp)
+                ) {
+                  Text(
+                    text = "Steps: $stepCount",
                     fontSize = 10.sp,
                     color = MutedGray,
                     fontWeight = FontWeight.Bold
@@ -2011,7 +2047,7 @@ fun FamilyHarmonyView(
                   horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                   Text(
-                    text = "Usra AI is matching stress indexes with collective family time gaps...",
+                    text = "AI is matching stress indexes with collective family time gaps...",
                     fontSize = 12.5.sp,
                     color = MutedGray,
                     fontWeight = FontWeight.SemiBold,
@@ -2426,19 +2462,15 @@ fun QuestVerificationDialog(
   onComplete: (String) -> Unit
 ) {
   var hasSnapped by remember { mutableStateOf(false) }
+  var capturedBitmap by remember { mutableStateOf<android.graphics.Bitmap?>(null) }
   var descriptionText by remember { mutableStateOf("") }
-  var isSimulatingCamera by remember { mutableStateOf(false) }
-  var countdown by remember { mutableStateOf(3) }
-
-  LaunchedEffect(isSimulatingCamera) {
-    if (isSimulatingCamera) {
-      countdown = 3
-      while (countdown > 0) {
-        kotlinx.coroutines.delay(600)
-        countdown--
-      }
+  
+  val cameraLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+    androidx.activity.result.contract.ActivityResultContracts.TakePicturePreview()
+  ) { bitmap ->
+    if (bitmap != null) {
+      capturedBitmap = bitmap
       hasSnapped = true
-      isSimulatingCamera = false
     }
   }
 
@@ -2491,30 +2523,20 @@ fun QuestVerificationDialog(
             ),
           contentAlignment = Alignment.Center
         ) {
-          if (isSimulatingCamera) {
-            Column(
-              horizontalAlignment = Alignment.CenterHorizontally,
-              verticalArrangement = Arrangement.Center
-            ) {
-              CircularProgressIndicator(
-                color = AccentBlue,
-                strokeWidth = 3.dp,
-                modifier = Modifier.size(32.dp)
-              )
-              Spacer(modifier = Modifier.height(12.dp))
-              Text(
-                text = "Simulating viewfinder capture: $countdown...",
-                color = MutedGray,
-                fontSize = 11.sp,
-                fontWeight = FontWeight.Bold
-              )
-            }
-          } else if (hasSnapped) {
+          if (hasSnapped && capturedBitmap != null) {
             Box(modifier = Modifier.fillMaxSize()) {
-              QuestPolaroidPreview(questIndex = questIndex, modifier = Modifier.fillMaxSize())
+              androidx.compose.foundation.Image(
+                bitmap = capturedBitmap!!.asImageBitmap(),
+                contentDescription = "Captured Proof",
+                modifier = Modifier.fillMaxSize(),
+                contentScale = androidx.compose.ui.layout.ContentScale.Crop
+              )
               
               IconButton(
-                onClick = { hasSnapped = false },
+                onClick = { 
+                  hasSnapped = false
+                  capturedBitmap = null
+                },
                 modifier = Modifier
                   .align(Alignment.TopEnd)
                   .padding(8.dp)
@@ -2535,7 +2557,7 @@ fun QuestVerificationDialog(
               verticalArrangement = Arrangement.Center,
               modifier = Modifier
                 .fillMaxSize()
-                .clickable { isSimulatingCamera = true }
+                .clickable { cameraLauncher.launch(null) }
                 .padding(16.dp)
             ) {
               Icon(
@@ -2554,7 +2576,7 @@ fun QuestVerificationDialog(
                 )
               )
               Text(
-                text = "Tap to simulate photo taking",
+                text = "Tap to open camera",
                 style = MaterialTheme.typography.bodySmall.copy(
                   color = MutedGray,
                   fontSize = 11.sp
@@ -3137,42 +3159,52 @@ fun MentalResetModal(
         )
       }
 
-      // Breathing Circle Visualizers
+      // Breathing Visualizers
       Box(
         modifier = Modifier.size(280.dp),
         contentAlignment = Alignment.Center
       ) {
-        // Outer pulsing energy waves
+        val scale = breathingScale.value
+
+        // Layer 3 (Outer most, softest)
         Box(
           modifier = Modifier
-            .size(280.dp * breathingScale.value)
+            .size(280.dp * scale)
             .clip(CircleShape)
-            .background(AccentBlueSoft.copy(alpha = 0.3f))
+            .background(AccentBlue.copy(alpha = 0.15f))
         )
+        // Layer 2
         Box(
           modifier = Modifier
-            .size(200.dp * breathingScale.value)
+            .size(220.dp * scale)
             .clip(CircleShape)
-            .background(AccentGreenSoft.copy(alpha = 0.5f))
+            .background(AccentBlue.copy(alpha = 0.25f))
         )
-        // Core breathing node
+        // Layer 1 (Inner core)
         Box(
           modifier = Modifier
-            .size(130.dp * breathingScale.value)
+            .size(160.dp * scale)
+            .clip(CircleShape)
+            .background(AccentBlue.copy(alpha = 0.45f))
+        )
+        // Solid Center
+        Box(
+          modifier = Modifier
+            .size(100.dp)
             .clip(CircleShape)
             .background(
               Brush.linearGradient(
                 colors = listOf(AccentBlue, AccentGreen)
               )
             )
-            .shadow(4.dp, CircleShape),
+            .shadow(8.dp, CircleShape),
           contentAlignment = Alignment.Center
         ) {
           Text(
             text = if (isInhaling) "Inhale" else "Exhale",
             color = Color.White,
             fontWeight = FontWeight.Bold,
-            fontSize = 16.sp
+            fontSize = 18.sp
           )
         }
       }
@@ -3557,6 +3589,7 @@ fun AccountScreen(
   var showResetPrompts by rememberSaveable { mutableStateOf(true) }
   var isEditingName by remember { mutableStateOf(false) }
   var nameInput by remember { mutableStateOf(userName) }
+  var showHarmonySync by remember { mutableStateOf(false) }
   val context = LocalContext.current
 
   Scaffold(
@@ -3809,8 +3842,26 @@ fun AccountScreen(
               )
             )
             DeviceRow(deviceName = "Mobile Device (This Phone)", active = true)
+            DeviceRow(deviceName = "Huawei Phone (HarmonyOS Sync)", active = true)
             DeviceRow(deviceName = "Family Smart Hub", active = false)
             DeviceRow(deviceName = "Primary Student Laptop", active = true)
+
+            Spacer(modifier = Modifier.height(8.dp))
+            Button(
+              onClick = { showHarmonySync = true },
+              modifier = Modifier.fillMaxWidth().height(48.dp),
+              colors = ButtonDefaults.buttonColors(containerColor = AccentBlue),
+              shape = RoundedCornerShape(12.dp)
+            ) {
+              Icon(
+                imageVector = Icons.Default.DevicesOther,
+                contentDescription = null,
+                tint = Color.White,
+                modifier = Modifier.size(20.dp)
+              )
+              Spacer(modifier = Modifier.width(8.dp))
+              Text("Sync New HarmonyOS Device", fontWeight = FontWeight.Bold)
+            }
           }
         }
       }
@@ -3947,6 +3998,107 @@ fun AccountScreen(
 
       item {
         Spacer(modifier = Modifier.height(24.dp))
+      }
+    }
+    if (showHarmonySync) {
+      HarmonyOSSyncModal(onDismiss = { showHarmonySync = false })
+    }
+  }
+}
+
+@Composable
+fun HarmonyOSSyncModal(onDismiss: () -> Unit) {
+  var step by remember { mutableStateOf(0) } // 0: scanning, 1: found, 2: success
+
+  LaunchedEffect(step) {
+    if (step == 0) {
+      kotlinx.coroutines.delay(2000)
+      step = 1
+    }
+  }
+
+  Dialog(onDismissRequest = onDismiss) {
+    Card(
+      shape = RoundedCornerShape(24.dp),
+      colors = CardDefaults.cardColors(containerColor = Color.White),
+      modifier = Modifier
+        .fillMaxWidth()
+        .padding(8.dp)
+        .shadow(8.dp, RoundedCornerShape(24.dp))
+    ) {
+      Column(
+        modifier = Modifier
+          .fillMaxWidth()
+          .padding(24.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+      ) {
+        if (step == 0) {
+          CircularProgressIndicator(color = AccentBlue, modifier = Modifier.size(48.dp))
+          Spacer(modifier = Modifier.height(16.dp))
+          Text(
+            text = "Scanning for nearby HarmonyOS devices...",
+            color = DarkSlate,
+            fontWeight = FontWeight.Bold,
+            fontSize = 15.sp,
+            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+          )
+        } else if (step == 1) {
+          Icon(
+            imageVector = Icons.Default.Smartphone,
+            contentDescription = null,
+            tint = AccentBlue,
+            modifier = Modifier.size(48.dp)
+          )
+          Spacer(modifier = Modifier.height(16.dp))
+          Text(
+            text = "Found Huawei Phone!",
+            color = DarkSlate,
+            fontWeight = FontWeight.Bold,
+            fontSize = 18.sp
+          )
+          Text(
+            text = "Tap to confirm synchronization.",
+            color = MutedGray,
+            fontSize = 13.sp,
+            modifier = Modifier.padding(top = 4.dp)
+          )
+          Spacer(modifier = Modifier.height(24.dp))
+          Button(
+            onClick = { step = 2 },
+            modifier = Modifier.fillMaxWidth().height(48.dp),
+            colors = ButtonDefaults.buttonColors(containerColor = AccentGreen)
+          ) {
+            Text("Confirm Pair", fontWeight = FontWeight.Bold)
+          }
+        } else {
+          Icon(
+            imageVector = Icons.Default.CheckCircle,
+            contentDescription = null,
+            tint = AccentGreen,
+            modifier = Modifier.size(48.dp)
+          )
+          Spacer(modifier = Modifier.height(16.dp))
+          Text(
+            text = "Huawei Sync Complete",
+            color = DarkSlate,
+            fontWeight = FontWeight.Bold,
+            fontSize = 18.sp
+          )
+          Text(
+            text = "Your device is now connected.",
+            color = MutedGray,
+            fontSize = 13.sp,
+            modifier = Modifier.padding(top = 4.dp)
+          )
+          Spacer(modifier = Modifier.height(24.dp))
+          Button(
+            onClick = onDismiss,
+            modifier = Modifier.fillMaxWidth().height(48.dp),
+            colors = ButtonDefaults.buttonColors(containerColor = AccentBlue)
+          ) {
+            Text("Done", fontWeight = FontWeight.Bold)
+          }
+        }
       }
     }
   }
@@ -4488,7 +4640,7 @@ val defaultFeedItems = listOf(
     ),
     FamilyFeedItem(
         id = "4",
-        authorName = "Usra",
+        authorName = "Usra AI",
         avatarInitials = "U",
         avatarColorName = "purple",
         type = FeedItemType.MILESTONE_REACHED,
@@ -5388,7 +5540,7 @@ fun UsraAIChatScreen(
         mutableStateOf(
             listOf(
                 Pair(
-                    "Hello! I am Usra AI, your family's digital wellness companion. 🌸 Use the profiles above to set specific screen times and sleep goals, then ask me for personalized recommendations or offline activities custom-tailored for any family member!",
+                    "Hello! I am your family's digital wellness companion. 🌸 Use the profiles above to set specific screen times and sleep goals, then ask me for personalized recommendations or offline activities custom-tailored for any family member!",
                     false
                 )
             )
@@ -5397,6 +5549,20 @@ fun UsraAIChatScreen(
     var inputText by remember { mutableStateOf("") }
     var isLoading by remember { mutableStateOf(false) }
     val listState = androidx.compose.foundation.lazy.rememberLazyListState()
+    
+    var tts by remember { mutableStateOf<android.speech.tts.TextToSpeech?>(null) }
+    DisposableEffect(context) {
+        val textToSpeech = android.speech.tts.TextToSpeech(context) { status ->
+            if (status == android.speech.tts.TextToSpeech.SUCCESS) {
+                tts?.setLanguage(java.util.Locale.UK)
+            }
+        }
+        tts = textToSpeech
+        onDispose {
+            textToSpeech.stop()
+            textToSpeech.shutdown()
+        }
+    }
 
     // Sync Sami's metrics if they change on the home page
     LaunchedEffect(screenTime, sleepLog) {
@@ -5430,8 +5596,8 @@ fun UsraAIChatScreen(
                     modifier = Modifier
                         .size(44.dp)
                         .clip(CircleShape)
-                        .background(if (ThemeConfig.isDarkTheme) Color(0xFF1C1E1E) else Color.White)
-                        .border(1.dp, if (ThemeConfig.isDarkTheme) Color(0xFF2C2E2E) else Color(0xFFECEFF3), CircleShape)
+                        .background(Color.White)
+                        .border(1.dp, Color(0xFFECEFF3), CircleShape)
                 ) {
                     Icon(
                         imageVector = Icons.AutoMirrored.Filled.ArrowBack,
@@ -5444,7 +5610,7 @@ fun UsraAIChatScreen(
 
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = "✨ Usra AI Wellness Coach",
+                        text = "✨ Usra AI",
                         fontWeight = FontWeight.Bold,
                         fontSize = 17.sp,
                         color = DarkSlate
@@ -5460,7 +5626,7 @@ fun UsraAIChatScreen(
                                 .background(AccentGreen)
                         )
                         Text(
-                            text = "Groq-Powered Advisor",
+                            text = "Smart Advisor",
                             fontSize = 11.sp,
                             color = MutedGray,
                             fontWeight = FontWeight.Medium
@@ -5528,7 +5694,7 @@ fun UsraAIChatScreen(
                             Card(
                                 colors = CardDefaults.cardColors(
                                     containerColor = if (isSelected) color.copy(alpha = 0.12f)
-                                                     else (if (ThemeConfig.isDarkTheme) Color(0xFF1C1E1E) else Color.White)
+                                                     else Color.White
                                 ),
                                 shape = RoundedCornerShape(12.dp),
                                 modifier = Modifier
@@ -5536,7 +5702,7 @@ fun UsraAIChatScreen(
                                     .clickable { selectedMember = memberName }
                                     .border(
                                         width = if (isSelected) 2.dp else 1.dp,
-                                        color = if (isSelected) color else (if (ThemeConfig.isDarkTheme) Color(0xFF2C2E2E) else Color(0xFFECEFF3)),
+                                        color = if (isSelected) color else Color(0xFFECEFF3),
                                         shape = RoundedCornerShape(12.dp)
                                     )
                             ) {
@@ -5582,7 +5748,7 @@ fun UsraAIChatScreen(
                     // Tuning Sliders Card for the active selected profile
                     Card(
                         colors = CardDefaults.cardColors(
-                            containerColor = if (ThemeConfig.isDarkTheme) Color(0xFF1C1E1E) else Color.White
+                            containerColor = Color.White
                         ),
                         shape = RoundedCornerShape(16.dp),
                         modifier = Modifier
@@ -5590,7 +5756,7 @@ fun UsraAIChatScreen(
                             .padding(horizontal = 16.dp)
                             .border(
                                 width = 1.dp,
-                                color = if (ThemeConfig.isDarkTheme) Color(0xFF2C2E2E) else Color(0xFFECEFF3),
+                                color = Color(0xFFECEFF3),
                                 shape = RoundedCornerShape(16.dp)
                             )
                     ) {
@@ -5666,7 +5832,7 @@ fun UsraAIChatScreen(
                                 colors = SliderDefaults.colors(
                                     thumbColor = AccentBlue,
                                     activeTrackColor = AccentBlue,
-                                    inactiveTrackColor = if (ThemeConfig.isDarkTheme) Color(0xFF2C2E2E) else AccentBlueSoft
+                                    inactiveTrackColor = AccentBlueSoft
                                 ),
                                 modifier = Modifier.height(24.dp)
                             )
@@ -5704,7 +5870,7 @@ fun UsraAIChatScreen(
                                 colors = SliderDefaults.colors(
                                     thumbColor = AccentGreen,
                                     activeTrackColor = AccentGreen,
-                                    inactiveTrackColor = if (ThemeConfig.isDarkTheme) Color(0xFF2C2E2E) else AccentGreenSoft
+                                    inactiveTrackColor = AccentGreenSoft
                                 ),
                                 modifier = Modifier.height(24.dp)
                             )
@@ -5747,7 +5913,7 @@ fun UsraAIChatScreen(
 
                         Card(
                             colors = CardDefaults.cardColors(
-                                containerColor = if (isUser) AccentBlue else (if (ThemeConfig.isDarkTheme) Color(0xFF1C1E1E) else Color.White)
+                                containerColor = if (isUser) AccentBlue else Color.White
                             ),
                             shape = RoundedCornerShape(
                                 topStart = 16.dp,
@@ -5760,7 +5926,7 @@ fun UsraAIChatScreen(
                                 .widthIn(max = 280.dp)
                                 .border(
                                     width = 1.dp,
-                                    color = if (isUser) Color.Transparent else (if (ThemeConfig.isDarkTheme) Color(0xFF2C2E2E) else Color(0xFFECEFF3)),
+                                    color = if (isUser) Color.Transparent else Color(0xFFECEFF3),
                                     shape = RoundedCornerShape(
                                         topStart = 16.dp,
                                         topEnd = 16.dp,
@@ -5769,13 +5935,30 @@ fun UsraAIChatScreen(
                                     )
                                 )
                         ) {
-                            Text(
-                                text = text,
-                                color = if (isUser) Color.White else DarkSlate,
-                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
-                                fontSize = 14.sp,
-                                lineHeight = 20.sp
-                            )
+                            Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
+                                Text(
+                                    text = text,
+                                    color = if (isUser) Color.White else DarkSlate,
+                                    fontSize = 14.sp,
+                                    lineHeight = 20.sp
+                                )
+                                if (!isUser) {
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    IconButton(
+                                        onClick = {
+                                            tts?.speak(text, android.speech.tts.TextToSpeech.QUEUE_FLUSH, null, null)
+                                        },
+                                        modifier = Modifier.size(24.dp).align(Alignment.End)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.VolumeUp,
+                                            contentDescription = "Read out loud",
+                                            tint = MutedGray,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -5800,12 +5983,12 @@ fun UsraAIChatScreen(
 
                             Card(
                                 colors = CardDefaults.cardColors(
-                                    containerColor = if (ThemeConfig.isDarkTheme) Color(0xFF1C1E1E) else Color.White
+                                    containerColor = Color.White
                                 ),
                                 shape = RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp, bottomStart = 4.dp, bottomEnd = 16.dp),
                                 modifier = Modifier.border(
                                     width = 1.dp,
-                                    color = if (ThemeConfig.isDarkTheme) Color(0xFF2C2E2E) else Color(0xFFECEFF3),
+                                    color = Color(0xFFECEFF3),
                                     shape = RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp, bottomStart = 4.dp, bottomEnd = 16.dp)
                                 )
                             ) {
@@ -5826,7 +6009,7 @@ fun UsraAIChatScreen(
                                             modifier = Modifier.size(12.dp)
                                         )
                                         Text(
-                                            text = "Usra AI coach is typing...",
+                                            text = "AI is typing...",
                                             fontSize = 11.sp,
                                             fontWeight = FontWeight.SemiBold,
                                             color = AccentBlue
@@ -5864,7 +6047,7 @@ fun UsraAIChatScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .imePadding(),
-                color = if (ThemeConfig.isDarkTheme) Color(0xFF121414) else Color.White,
+                color = Color.White,
                 tonalElevation = 2.dp
             ) {
                 Row(
@@ -5877,16 +6060,16 @@ fun UsraAIChatScreen(
                     OutlinedTextField(
                         value = inputText,
                         onValueChange = { inputText = it },
-                        placeholder = { Text("Ask Usra AI coach...") },
+                        placeholder = { Text("Ask AI coach...") },
                         modifier = Modifier
                             .weight(1f)
                             .heightIn(min = 52.dp),
                         shape = RoundedCornerShape(26.dp),
                         colors = OutlinedTextFieldDefaults.colors(
                             focusedBorderColor = AccentBlue,
-                            unfocusedBorderColor = if (ThemeConfig.isDarkTheme) Color(0xFF2C2E2E) else Color(0xFFECEFF3),
-                            focusedContainerColor = if (ThemeConfig.isDarkTheme) Color(0xFF1C1E1E) else Color(0xFFF9FAFB),
-                            unfocusedContainerColor = if (ThemeConfig.isDarkTheme) Color(0xFF1C1E1E) else Color(0xFFF9FAFB)
+                            unfocusedBorderColor = Color(0xFFECEFF3),
+                            focusedContainerColor = Color(0xFFF9FAFB),
+                            unfocusedContainerColor = Color(0xFFF9FAFB)
                         ),
                         maxLines = 4
                     )
@@ -5983,7 +6166,7 @@ fun ShimmerPlaceholder(
     Box(
         modifier = modifier
             .background(
-                color = if (ThemeConfig.isDarkTheme) Color(0xFF2C2E2E).copy(alpha = alpha) else Color(0xFFEFF1F5).copy(alpha = alpha),
+                color = Color(0xFFEFF1F5).copy(alpha = alpha),
                 shape = shape
             )
     )

@@ -2,7 +2,6 @@ package com.example
 
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
-import com.example.ui.theme.ThemeConfig
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -12,7 +11,7 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [36])
+@Config(sdk = [34])
 class ExampleRobolectricTest {
 
   @Test
@@ -20,15 +19,6 @@ class ExampleRobolectricTest {
     val context = ApplicationProvider.getApplicationContext<Context>()
     val appName = context.getString(R.string.app_name)
     assertEquals("Usra", appName)
-  }
-
-  @Test
-  fun `theme config toggle updates state`() {
-    ThemeConfig.isDarkTheme = false
-    assertFalse(ThemeConfig.isDarkTheme)
-
-    ThemeConfig.isDarkTheme = true
-    assertTrue(ThemeConfig.isDarkTheme)
   }
 
   @Test
