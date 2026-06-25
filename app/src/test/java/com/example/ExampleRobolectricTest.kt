@@ -2,8 +2,7 @@ package com.example
 
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
-import com.aistudio.suqoonplus.fmlbal.example.ui.theme.ThemeConfig
-import com.aistudio.suqoonplus.fmlbal.R
+import com.example.ui.theme.ThemeConfig
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -20,7 +19,7 @@ class ExampleRobolectricTest {
   fun `read string from context`() {
     val context = ApplicationProvider.getApplicationContext<Context>()
     val appName = context.getString(R.string.app_name)
-    assertEquals("Suqoon+", appName)
+    assertEquals("Usra", appName)
   }
 
   @Test
@@ -35,7 +34,7 @@ class ExampleRobolectricTest {
   @Test
   fun `shared preferences persist theme mode`() {
     val context = ApplicationProvider.getApplicationContext<Context>()
-    val prefs = context.getSharedPreferences("suqoon_prefs", Context.MODE_PRIVATE)
+    val prefs = context.getSharedPreferences("usra_prefs", Context.MODE_PRIVATE)
 
     // Save dark theme
     prefs.edit().putBoolean("dark_theme_enabled", true).apply()

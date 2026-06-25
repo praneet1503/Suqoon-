@@ -1,6 +1,7 @@
-package com.aistudio.suqoonplus.fmlbal.example
+package com.example
 
 import com.squareup.moshi.JsonClass
+import com.squareup.moshi.Json
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
@@ -15,7 +16,6 @@ import retrofit2.http.Query
 import retrofit2.http.Path
 import retrofit2.http.Header
 import android.util.Log
-import com.aistudio.suqoonplus.fmlbal.BuildConfig
 
 // Gemini Request/Response Models
 @JsonClass(generateAdapter = true)
