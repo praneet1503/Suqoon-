@@ -1,0 +1,39 @@
+{
+  "project_info": {
+    "project_number": "599808724897",
+    "project_id": "usra-ca31d",
+    "storage_bucket": "usra-ca31d.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:599808724897:android:cb000fbe89fe68395d45e0",
+        "android_client_info": {
+          "package_name": "com.usra.fmbal"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "599808724897-1h6geb7l3k62t58odhsrgvdukdo76bbd.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCotVOr76iIBT2J8AlB14wbYEwqBAq7COM"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "599808724897-1h6geb7l3k62t58odhsrgvdukdo76bbd.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
