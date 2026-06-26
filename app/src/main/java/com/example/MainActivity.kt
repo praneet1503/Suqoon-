@@ -95,10 +95,12 @@ fun initFirebase(context: Context) {
         .setProjectId(projectId)
         .build()
       FirebaseApp.initializeApp(context, options)
-      Log.d("FirebaseInit", "Firebase initialized programmatically")
+      Log.d("FirebaseInit", "Firebase initialized programmatically with project: $projectId")
+    } else {
+      Log.d("FirebaseInit", "Firebase already initialized")
     }
   } catch (e: Exception) {
-    Log.e("FirebaseInit", "Failed to initialize Firebase", e)
+    Log.e("FirebaseInit", "Failed to initialize Firebase programmatically", e)
   }
 }
 
@@ -128,8 +130,8 @@ object FirestoreManager {
     initFirebase(context)
     try {
       val db = FirebaseFirestore.getInstance()
-      val auth = FirebaseAuth.getInstance()
-      val userId = auth.currentUser?.uid ?: "anonymous"
+      val prefs = context.getSharedPreferences("usra_prefs", Context.MODE_PRIVATE)
+      val userName = prefs.getString("user_name", "Sami") ?: "Sami"
       
       val data = hashMapOf(
         "stressLevel" to stressLevel,
@@ -141,14 +143,22 @@ object FirestoreManager {
       )
       
       db.collection("wellness_data")
-        .document(userId)
+        .document(userName.lowercase())
         .set(data, SetOptions.merge())
         .addOnSuccessListener {
-          Log.d(TAG, "Successfully saved wellness data for $userId")
+          Log.d(TAG, "Successfully saved wellness data to Firestore for $userName")
+          // Update SharedPreferences to keep local storage fully updated
+          prefs.edit()
+            .putFloat("ai_family_stress_level", stressLevel)
+            .putString("ai_family_time_mode", timeMode)
+            .putString("selected_mood", mood)
+            .putFloat("target_wellness_score", targetWellnessScore)
+            .putFloat("screen_time_goal", screenTimeGoal)
+            .apply()
           onSuccess()
         }
         .addOnFailureListener { e ->
-          Log.e(TAG, "Failed to save wellness data", e)
+          Log.e(TAG, "Failed to save wellness data to Firestore", e)
           onFailure(e)
         }
     } catch (e: Exception) {
@@ -165,26 +175,42 @@ object FirestoreManager {
     initFirebase(context)
     try {
       val db = FirebaseFirestore.getInstance()
-      val auth = FirebaseAuth.getInstance()
-      val userId = auth.currentUser?.uid ?: return onFailure(Exception("User not authenticated"))
+      val prefs = context.getSharedPreferences("usra_prefs", Context.MODE_PRIVATE)
+      val userName = prefs.getString("user_name", "Sami") ?: "Sami"
       
       db.collection("wellness_data")
-        .document(userId)
+        .document(userName.lowercase())
         .get()
         .addOnSuccessListener { document ->
           if (document != null && document.exists()) {
-            val stressLevel = document.getDouble("stressLevel")?.toFloat() ?: 5f
-            val timeMode = document.getString("timeMode") ?: "Current System Time"
-            val mood = document.getString("mood") ?: "Calm"
-            val targetWellnessScore = document.getDouble("targetWellnessScore")?.toFloat() ?: 80f
-            val screenTimeGoal = document.getDouble("screenTimeGoal")?.toFloat() ?: 6f
+            val stressLevel = document.getDouble("stressLevel")?.toFloat() ?: prefs.getFloat("ai_family_stress_level", 5f)
+            val timeMode = document.getString("timeMode") ?: prefs.getString("ai_family_time_mode", "Current System Time") ?: "Current System Time"
+            val mood = document.getString("mood") ?: prefs.getString("selected_mood", "Calm")
+            val targetWellnessScore = document.getDouble("targetWellnessScore")?.toFloat() ?: prefs.getFloat("target_wellness_score", 80f)
+            val screenTimeGoal = document.getDouble("screenTimeGoal")?.toFloat() ?: prefs.getFloat("screen_time_goal", 6f)
+            
+            Log.d(TAG, "Successfully loaded wellness data from Firestore")
+            // Sync locally to SharedPreferences too
+            prefs.edit()
+              .putFloat("ai_family_stress_level", stressLevel)
+              .putString("ai_family_time_mode", timeMode)
+              .putString("selected_mood", mood)
+              .putFloat("target_wellness_score", targetWellnessScore)
+              .putFloat("screen_time_goal", screenTimeGoal)
+              .apply()
+              
             onSuccess(stressLevel, timeMode, mood, targetWellnessScore, screenTimeGoal)
           } else {
+            Log.d(TAG, "No Firestore document exists for $userName; fallback to SharedPreferences")
             onFailure(Exception("No document found"))
           }
         }
-        .addOnFailureListener { e -> onFailure(e) }
+        .addOnFailureListener { e ->
+          Log.e(TAG, "Failed to load wellness data from Firestore", e)
+          onFailure(e)
+        }
     } catch (e: Exception) {
+      Log.e(TAG, "Error in loadWellnessData", e)
       onFailure(e)
     }
   }
@@ -266,27 +292,18 @@ fun UsraApp() {
   val prefs = remember { context.getSharedPreferences("usra_prefs", Context.MODE_PRIVATE) }
   val coroutineScope = rememberCoroutineScope()
 
-  var currentUser by remember { mutableStateOf(FirebaseAuth.getInstance().currentUser) }
-  var isUserAuthenticated by remember { mutableStateOf(currentUser != null) }
+  var isUserAuthenticated by remember { mutableStateOf(prefs.getBoolean("is_authenticated", false)) }
+  var authChecked by remember { mutableStateOf(false) }
+  var currentUserEmail by remember { mutableStateOf(prefs.getString("auth_user_email", null)) }
   var userName by remember {
-    mutableStateOf(currentUser?.displayName ?: prefs.getString("user_name", "Sami") ?: "Sami")
-  }
-
-  // Auth State Listener
-  LaunchedEffect(Unit) {
-    FirebaseAuth.getInstance().addAuthStateListener { auth ->
-      currentUser = auth.currentUser
-      isUserAuthenticated = auth.currentUser != null
-      if (auth.currentUser != null) {
-        userName = auth.currentUser?.displayName ?: auth.currentUser?.email?.substringBefore("@") ?: "Sami"
-        prefs.edit().putString("user_name", userName).apply()
-      }
-    }
+    mutableStateOf(prefs.getString("user_name", "Sami") ?: "Sami")
   }
 
   val cameraPermissionLauncher = rememberLauncherForActivityResult(
     ActivityResultContracts.RequestPermission()
-  ) { isGranted: Boolean -> }
+  ) { isGranted: Boolean ->
+    // Ignored, just requesting on startup
+  }
 
   var stepCount by remember { mutableStateOf(prefs.getInt("step_count", 0)) }
 
@@ -326,6 +343,32 @@ fun UsraApp() {
           screenTime = deviceTime
       }
     }
+
+    try {
+      val auth = FirebaseAuth.getInstance()
+      val user = auth.currentUser
+      if (user != null) {
+        isUserAuthenticated = true
+        currentUserEmail = user.email
+        userName = prefs.getString("user_name", null) ?: user.displayName ?: user.email?.substringBefore("@") ?: "Sami"
+      } else {
+        val savedEmail = prefs.getString("auth_user_email", null)
+        if (savedEmail != null) {
+          isUserAuthenticated = true
+          currentUserEmail = savedEmail
+          userName = prefs.getString("user_name", "Sami") ?: "Sami"
+        }
+      }
+    } catch (e: Exception) {
+      Log.e("UsraAppAuth", "Firebase Auth check failed", e)
+      val savedEmail = prefs.getString("auth_user_email", null)
+      if (savedEmail != null) {
+        isUserAuthenticated = true
+        currentUserEmail = savedEmail
+        userName = prefs.getString("user_name", "Sami") ?: "Sami"
+      }
+    }
+    authChecked = true
   }
 
   var currentTab by remember { 
@@ -403,20 +446,61 @@ fun UsraApp() {
     }
   }
 
-  // Persist states reactively
-  LaunchedEffect(currentTab, selectedMood, questsChecked, screenTime, sleepLog, userName, screenTimeGoal) {
+  // Persist states reactively to SharedPreferences
+  LaunchedEffect(currentTab) {
+    prefs.edit().putInt("current_tab", currentTab).apply()
+  }
+  LaunchedEffect(selectedMood) {
+    prefs.edit().putString("selected_mood", selectedMood).apply()
+  }
+  LaunchedEffect(questsChecked) {
     prefs.edit()
-      .putInt("current_tab", currentTab)
-      .putString("selected_mood", selectedMood)
-      .putFloat("screen_time", screenTime)
-      .putFloat("sleep_log", sleepLog)
-      .putString("user_name", userName)
-      .putFloat("screen_time_goal", screenTimeGoal)
+      .putBoolean("quest_checked_0", questsChecked.getOrElse(0) { false })
+      .putBoolean("quest_checked_1", questsChecked.getOrElse(1) { false })
+      .putBoolean("quest_checked_2", questsChecked.getOrElse(2) { false })
+      .putBoolean("quest_checked_3", questsChecked.getOrElse(3) { false })
+      .putBoolean("quest_checked_4", questsChecked.getOrElse(4) { false })
       .apply()
+  }
+  LaunchedEffect(questDescriptions) {
+    prefs.edit()
+      .putString("quest_desc_0", questDescriptions.getOrElse(0) { "" })
+      .putString("quest_desc_1", questDescriptions.getOrElse(1) { "" })
+      .putString("quest_desc_2", questDescriptions.getOrElse(2) { "" })
+      .putString("quest_desc_3", questDescriptions.getOrElse(3) { "" })
+      .putString("quest_desc_4", questDescriptions.getOrElse(4) { "" })
+      .apply()
+  }
+  LaunchedEffect(questPhotosSnapped) {
+    prefs.edit()
+      .putBoolean("quest_photo_0", questPhotosSnapped.getOrElse(0) { false })
+      .putBoolean("quest_photo_1", questPhotosSnapped.getOrElse(1) { false })
+      .putBoolean("quest_photo_2", questPhotosSnapped.getOrElse(2) { false })
+      .putBoolean("quest_photo_3", questPhotosSnapped.getOrElse(3) { false })
+      .putBoolean("quest_photo_4", questPhotosSnapped.getOrElse(4) { false })
+      .apply()
+  }
+  LaunchedEffect(screenTime) {
+    prefs.edit().putFloat("screen_time", screenTime).apply()
+  }
+  LaunchedEffect(sleepLog) {
+    prefs.edit().putFloat("sleep_log", sleepLog).apply()
+  }
+  LaunchedEffect(userName) {
+    prefs.edit().putString("user_name", userName).apply()
+  }
+  LaunchedEffect(screenTimeGoal) {
+    prefs.edit().putFloat("screen_time_goal", screenTimeGoal).apply()
   }
 
   if (!isUserAuthenticated) {
-    UsraAuthScreen()
+    UsraAuthScreen(
+      onAuthSuccess = { email, name ->
+        currentUserEmail = email
+        userName = name
+        isUserAuthenticated = true
+      }
+    )
   } else {
     Box(modifier = Modifier.fillMaxSize()) {
       Scaffold(
@@ -428,6 +512,7 @@ fun UsraApp() {
             .navigationBarsPadding(),
           contentAlignment = Alignment.BottomCenter
         ) {
+          // Custom notched bottom bar background with premium shadow
           Surface(
             modifier = Modifier
               .fillMaxWidth()
@@ -443,6 +528,7 @@ fun UsraApp() {
               modifier = Modifier.fillMaxSize(),
               verticalAlignment = Alignment.CenterVertically
             ) {
+              // Tab 0: Home
               BottomNavItem(
                 selected = currentTab == 0,
                 onClick = { currentTab = 0 },
@@ -451,6 +537,8 @@ fun UsraApp() {
                 activeColor = AccentBlue,
                 modifier = Modifier.weight(1f).testTag("home_tab")
               )
+
+              // Tab 1: Harmony
               BottomNavItem(
                 selected = currentTab == 1,
                 onClick = { currentTab = 1 },
@@ -459,7 +547,11 @@ fun UsraApp() {
                 activeColor = AccentGreen,
                 modifier = Modifier.weight(1f).testTag("family_tab")
               )
+
+              // Central empty placeholder for the cutout/notch
               Box(modifier = Modifier.weight(1f))
+
+              // Tab 2: Quests
               BottomNavItem(
                 selected = currentTab == 2,
                 onClick = { currentTab = 2 },
@@ -468,6 +560,8 @@ fun UsraApp() {
                 activeColor = AccentBlue,
                 modifier = Modifier.weight(1f).testTag("quests_tab")
               )
+
+              // Tab 3: Feed
               BottomNavItem(
                 selected = currentTab == 3,
                 onClick = { currentTab = 3 },
@@ -478,6 +572,8 @@ fun UsraApp() {
               )
             }
           }
+
+          // Floating Action Button (+) centered inside the cutout/notch
           Box(
             modifier = Modifier
               .align(Alignment.BottomCenter)
@@ -587,22 +683,34 @@ fun UsraApp() {
                 val newChecked = questsChecked.toMutableList()
                 newChecked[index] = true
                 questsChecked = newChecked
+
                 val newDesc = questDescriptions.toMutableList()
                 newDesc[index] = desc
                 questDescriptions = newDesc
+
                 val newPhotos = questPhotosSnapped.toMutableList()
                 newPhotos[index] = true
                 questPhotosSnapped = newPhotos
-                activeToastMessage = "🎉 Quest Completed!"
+
+                val questTitle = when (index) {
+                  0 -> "Solo Box Breathing"
+                  1 -> "Evening Family Stroll"
+                  2 -> "Cook Together"
+                  3 -> aiQuestTitle1
+                  else -> aiQuestTitle2
+                }
+                activeToastMessage = "🎉 Quest Completed: $questTitle!"
                 activeToastType = "goal"
               },
               onQuestReset = { index ->
                 val newChecked = questsChecked.toMutableList()
                 newChecked[index] = false
                 questsChecked = newChecked
+
                 val newDesc = questDescriptions.toMutableList()
                 newDesc[index] = ""
                 questDescriptions = newDesc
+
                 val newPhotos = questPhotosSnapped.toMutableList()
                 newPhotos[index] = false
                 questPhotosSnapped = newPhotos
@@ -681,43 +789,169 @@ fun UsraApp() {
       }
     }
 
-    AnimatedVisibility(visible = showResetModal, enter = slideInVertically { it } + fadeIn(), exit = slideOutVertically { it } + fadeOut()) {
+    // Full screen Slide Up Mental Reset Animation Modal Overlay
+    AnimatedVisibility(
+      visible = showResetModal,
+      enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
+      exit = slideOutVertically(targetOffsetY = { it }) + fadeOut(),
+      modifier = Modifier.fillMaxSize()
+    ) {
       MentalResetModal(onClose = { showResetModal = false })
     }
 
-    AnimatedVisibility(visible = showAccountPage, enter = slideInVertically { it } + fadeIn(), exit = slideOutVertically { it } + fadeOut()) {
+    // Full screen Slide Up Account Page Overlay
+    AnimatedVisibility(
+      visible = showAccountPage,
+      enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
+      exit = slideOutVertically(targetOffsetY = { it }) + fadeOut(),
+      modifier = Modifier.fillMaxSize()
+    ) {
       AccountScreen(
         userName = userName,
         onUserNameChange = { userName = it },
-        onResetApp = { /* Reset app state logic */ },
+        onResetApp = {
+          prefs.edit().clear().apply()
+          currentTab = 0
+          selectedMood = null
+          questsChecked = listOf(false, false, false)
+          questDescriptions = listOf("", "", "")
+          questPhotosSnapped = listOf(false, false, false)
+          screenTime = 7.5f
+          sleepLog = 5.5f
+          showResetModal = false
+          userName = "Sami"
+          screenTimeGoal = 6.0f
+          showAccountPage = false
+        },
         onLogOut = {
           FirebaseAuth.getInstance().signOut()
+          prefs.edit()
+            .putBoolean("is_authenticated", false)
+            .remove("auth_user_email")
+            .remove("user_name")
+            .apply()
+          isUserAuthenticated = false
           showAccountPage = false
         },
         onClose = { showAccountPage = false }
       )
     }
 
-    AnimatedVisibility(visible = showUsraAIChat, enter = slideInVertically { it } + fadeIn(), exit = slideOutVertically { it } + fadeOut()) {
-      UsraAIChatScreen(userName, screenTime, { screenTime = it }, sleepLog, { sleepLog = it }, { showUsraAIChat = false })
+    // Full screen Slide Up Usra AI Chat Screen Overlay
+    AnimatedVisibility(
+      visible = showUsraAIChat,
+      enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
+      exit = slideOutVertically(targetOffsetY = { it }) + fadeOut(),
+      modifier = Modifier.fillMaxSize()
+    ) {
+      UsraAIChatScreen(
+        userName = userName,
+        screenTime = screenTime,
+        onScreenTimeChange = { screenTime = it },
+        sleepLog = sleepLog,
+        onSleepLogChange = { sleepLog = it },
+        onClose = { showUsraAIChat = false }
+      )
     }
 
-    AnimatedVisibility(visible = showWatchDataPage, enter = slideInVertically { it } + fadeIn(), exit = slideOutVertically { it } + fadeOut()) {
-      HealthTrackerDashboard(onClose = { showWatchDataPage = false })
+    // Full screen Slide Up Watch Data Overlay
+    AnimatedVisibility(
+      visible = showWatchDataPage,
+      enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
+      exit = slideOutVertically(targetOffsetY = { it }) + fadeOut(),
+      modifier = Modifier.fillMaxSize()
+    ) {
+      HealthTrackerDashboard(
+        onClose = { showWatchDataPage = false }
+      )
     }
 
-    AnimatedVisibility(visible = activeToastMessage != null, enter = slideInVertically { -it } + fadeIn(), exit = slideOutVertically { -it } + fadeOut(),
-      modifier = Modifier.align(Alignment.TopCenter).padding(top = 44.dp).padding(horizontal = 24.dp).zIndex(99f)
+    // Elegant, custom-designed premium top-toast notification alert
+    AnimatedVisibility(
+      visible = activeToastMessage != null,
+      enter = slideInVertically(initialOffsetY = { -it }) + fadeIn(),
+      exit = slideOutVertically(targetOffsetY = { -it }) + fadeOut(),
+      modifier = Modifier
+        .align(Alignment.TopCenter)
+        .padding(top = 44.dp)
+        .padding(horizontal = 24.dp)
+        .zIndex(99f)
     ) {
       activeToastMessage?.let { msg ->
         Card(
           colors = CardDefaults.cardColors(containerColor = OffWhite),
           shape = RoundedCornerShape(20.dp),
-          modifier = Modifier.fillMaxWidth().shadow(12.dp, RoundedCornerShape(20.dp)).border(1.5.dp, AccentBlue, RoundedCornerShape(20.dp))
+          modifier = Modifier
+            .fillMaxWidth()
+            .shadow(12.dp, RoundedCornerShape(20.dp))
+            .border(
+              width = 1.5.dp,
+              color = when (activeToastType) {
+                "sync" -> AccentGreen
+                "goal" -> AccentBlue
+                else -> AccentBlue
+              },
+              shape = RoundedCornerShape(20.dp)
+            )
+            .testTag("custom_toast_notification")
         ) {
-          Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            Icon(imageVector = Icons.Default.CheckCircle, contentDescription = null, tint = AccentBlue)
-            Text(text = msg, style = MaterialTheme.typography.bodySmall, color = DarkSlate)
+          Row(
+            modifier = Modifier.padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+          ) {
+            Box(
+              modifier = Modifier
+                .size(36.dp)
+                .clip(CircleShape)
+                .background(
+                  color = when (activeToastType) {
+                    "sync" -> AccentGreenSoft
+                    "goal" -> AccentBlueSoft
+                    else -> AccentBlueSoft
+                  }
+                ),
+              contentAlignment = Alignment.Center
+            ) {
+              Icon(
+                imageVector = when (activeToastType) {
+                  "sync" -> Icons.Default.Sync
+                  "goal" -> Icons.Default.Spa
+                  else -> Icons.Default.CheckCircle
+                },
+                contentDescription = null,
+                tint = when (activeToastType) {
+                  "sync" -> AccentGreen
+                  "goal" -> AccentBlue
+                  else -> AccentBlue
+                },
+                modifier = Modifier.size(18.dp)
+              )
+            }
+            Column(modifier = Modifier.weight(1f)) {
+              Text(
+                text = when (activeToastType) {
+                  "sync" -> "Household Balance Synchronized"
+                  "goal" -> "Wellbeing Goal Achieved!"
+                  else -> "Notification"
+                },
+                style = MaterialTheme.typography.labelMedium.copy(
+                  fontWeight = FontWeight.Bold,
+                  color = DarkSlate,
+                  fontSize = 11.sp,
+                  letterSpacing = 0.5.sp
+                )
+              )
+              Spacer(modifier = Modifier.height(2.dp))
+              Text(
+                text = msg.replace("🔄 ", "").replace("🎉 ", ""),
+                style = MaterialTheme.typography.bodySmall.copy(
+                  color = DarkSlate,
+                  fontSize = 13.sp,
+                  lineHeight = 17.sp
+                )
+              )
+            }
           }
         }
       }
@@ -728,140 +962,20 @@ fun UsraApp() {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun UsraAuthScreen() {
-    val context = LocalContext.current
-    var isLoading by remember { mutableStateOf(false) }
-    var errorMessage by remember { mutableStateOf<String?>(null) }
-    
-    var email by remember { mutableStateOf("") }
-    var password by remember { mutableStateOf("") }
-    var name by remember { mutableStateOf("") }
-    var isSignUp by remember { mutableStateOf(false) }
+fun UsraAuthScreen(
+  onAuthSuccess: (email: String, name: String) -> Unit
+) {
+  val context = LocalContext.current
+  val prefs = remember { context.getSharedPreferences("usra_prefs", Context.MODE_PRIVATE) }
+  var isLoading by remember { mutableStateOf(false) }
+  var errorMessage by remember { mutableStateOf<String?>(null) }
+  var successMessage by remember { mutableStateOf<String?>(null) }
+  
+  var email by remember { mutableStateOf("") }
+  var password by remember { mutableStateOf("") }
+  var name by remember { mutableStateOf("") }
+  var isSignUp by remember { mutableStateOf(false) }
 
-    val googleSignInLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.StartActivityForResult()
-    ) { result ->
-        isLoading = true
-        val task = GoogleSignIn.getSignedInAccountFromIntent(result.data)
-        try {
-            val account = task.getResult(ApiException::class.java)
-            val idToken = account?.idToken
-            if (idToken != null) {
-                val credential = GoogleAuthProvider.getCredential(idToken, null)
-                FirebaseAuth.getInstance().signInWithCredential(credential)
-                    .addOnCompleteListener { authTask ->
-                        if (!authTask.isSuccessful) {
-                            errorMessage = authTask.exception?.message ?: "Google authentication failed"
-                        }
-                        isLoading = false
-                    }
-            } else {
-                errorMessage = "Google authentication failed (no ID token)"
-                isLoading = false
-            }
-        } catch (e: ApiException) {
-            errorMessage = "Google sign in failed: ${e.message}"
-            isLoading = false
-        }
-    }
-
-    Box(modifier = Modifier.fillMaxSize().background(Color.White).safeDrawingPadding()) {
-        LazyColumn(
-            modifier = Modifier.fillMaxSize().padding(horizontal = 24.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
-        ) {
-            item {
-                Text(text = "USRA AI", style = MaterialTheme.typography.headlineLarge.copy(fontWeight = FontWeight.Bold, color = DarkSlate))
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(text = "Mindful Screen Balance & Family Harmony", textAlign = TextAlign.Center, color = MutedGray)
-                Spacer(modifier = Modifier.height(48.dp))
-
-                errorMessage?.let {
-                    Text(text = it, color = Color.Red, style = MaterialTheme.typography.bodySmall)
-                    Spacer(modifier = Modifier.height(12.dp))
-                }
-
-                if (isSignUp) {
-                    OutlinedTextField(
-                      value = name, 
-                      onValueChange = { name = it }, 
-                      label = { Text("Display Name") }, 
-                      modifier = Modifier.fillMaxWidth(),
-                      shape = RoundedCornerShape(12.dp)
-                    )
-                    Spacer(modifier = Modifier.height(16.dp))
-                }
-
-                OutlinedTextField(
-                  value = email, 
-                  onValueChange = { email = it }, 
-                  label = { Text("Email") }, 
-                  modifier = Modifier.fillMaxWidth(),
-                  shape = RoundedCornerShape(12.dp)
-                )
-                Spacer(modifier = Modifier.height(16.dp))
-                OutlinedTextField(
-                  value = password, 
-                  onValueChange = { password = it }, 
-                  label = { Text("Password") }, 
-                  visualTransformation = PasswordVisualTransformation(), 
-                  modifier = Modifier.fillMaxWidth(),
-                  shape = RoundedCornerShape(12.dp)
-                )
-                Spacer(modifier = Modifier.height(32.dp))
-
-                Button(
-                    onClick = {
-                        if (email.isBlank() || password.isBlank()) return@Button
-                        isLoading = true
-                        val auth = FirebaseAuth.getInstance()
-                        if (isSignUp) {
-                            auth.createUserWithEmailAndPassword(email, password).addOnCompleteListener { task ->
-                                if (task.isSuccessful) {
-                                    val profileUpdates = UserProfileChangeRequest.Builder().setDisplayName(name).build()
-                                    auth.currentUser?.updateProfile(profileUpdates)
-                                } else {
-                                    errorMessage = task.exception?.message
-                                }
-                                isLoading = false
-                            }
-                        } else {
-                            auth.signInWithEmailAndPassword(email, password).addOnCompleteListener { task ->
-                                if (!task.isSuccessful) errorMessage = task.exception?.message
-                                isLoading = false
-                            }
-                        }
-                    },
-                    modifier = Modifier.fillMaxWidth().height(54.dp),
-                    shape = RoundedCornerShape(14.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF14B8A6)),
-                    enabled = !isLoading
-                ) {
-                    if (isLoading) CircularProgressIndicator(modifier = Modifier.size(24.dp), color = Color.White)
-                    else Text(if (isSignUp) "Create Account" else "Sign In", fontWeight = FontWeight.Bold)
-                }
-
-                TextButton(onClick = { isSignUp = !isSignUp }) {
-                    Text(if (isSignUp) "Already have an account? Sign In" else "New here? Create Account", color = AccentBlue)
-                }
-
-                Spacer(modifier = Modifier.height(24.dp))
-
-                OutlinedButton(
-                    onClick = {
-                        val gso = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
-                            .requestIdToken(BuildConfig.FIREBASE_WEB_CLIENT_ID)
-                            .requestEmail()
-                            .build()
-                        val googleSignInClient = GoogleSignIn.getClient(context, gso)
-                        googleSignInLauncher.launch(googleSignInClient.signInIntent)
-                    },
-                    modifier = Modifier.fillMaxWidth().height(54.dp),
-                    shape = RoundedCornerShape(14.dp),
-                    enabled = !isLoading
-                ) {
-                    Text("Continue with Google", color = DarkSlate)
   val googleSignInLauncher = rememberLauncherForActivityResult(
     contract = ActivityResultContracts.StartActivityForResult()
   ) { result ->
@@ -1061,11 +1175,89 @@ fun UsraAuthScreen() {
                   }
                 }
             }
+          },
+          colors = ButtonDefaults.buttonColors(
+            containerColor = Color(0xFF14B8A6), // Green
+            contentColor = Color.White
+          ),
+          shape = RoundedCornerShape(14.dp),
+          modifier = Modifier
+            .fillMaxWidth()
+            .height(54.dp),
+          enabled = !isLoading
+        ) {
+          if (isLoading) {
+            CircularProgressIndicator(color = Color.White, modifier = Modifier.size(24.dp))
+          } else {
+            Icon(Icons.Default.AccountCircle, contentDescription = "Email Icon", tint = Color.White, modifier = Modifier.size(24.dp))
+            Spacer(modifier = Modifier.width(12.dp))
+            Text(
+              text = if (isSignUp) "Create Family Account" else "Sign In",
+              fontWeight = FontWeight.SemiBold,
+              style = MaterialTheme.typography.bodyLarge
+            )
+          }
         }
+        
+        Spacer(modifier = Modifier.height(16.dp))
+        
+        TextButton(
+            onClick = { isSignUp = !isSignUp },
+            enabled = !isLoading
+        ) {
+            Text(
+                text = if (isSignUp) "Already have an account? Sign In" else "New family? Create Account",
+                color = AccentBlue,
+                fontWeight = FontWeight.Medium
+            )
+        }
+
+        Spacer(modifier = Modifier.height(24.dp))
+
+        Button(
+          onClick = {
+            isLoading = true
+            errorMessage = null
+            successMessage = null
+            
+            val gso = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
+                .requestIdToken(BuildConfig.FIREBASE_WEB_CLIENT_ID.ifEmpty { "1064095450410-fake-client-id.apps.googleusercontent.com" })
+                .requestEmail()
+                .build()
+            val googleSignInClient = GoogleSignIn.getClient(context, gso)
+            googleSignInLauncher.launch(googleSignInClient.signInIntent)
+          },
+          colors = ButtonDefaults.buttonColors(
+            containerColor = Color(0xFFE2E8F0), // Light Gray
+            contentColor = Color(0xFF1E293B)
+          ),
+          shape = RoundedCornerShape(14.dp),
+          modifier = Modifier
+            .fillMaxWidth()
+            .height(54.dp),
+          enabled = !isLoading
+        ) {
+          if (!isLoading) {
+            Icon(
+              imageVector = Icons.Default.AccountCircle, // Placeholder for Google icon
+              contentDescription = "Google Icon",
+              modifier = Modifier.size(24.dp)
+            )
+            Spacer(modifier = Modifier.width(12.dp))
+            Text(
+              text = "Continue with Google",
+              fontWeight = FontWeight.SemiBold,
+              style = MaterialTheme.typography.bodyLarge
+            )
+          }
+        }
+
+        Spacer(modifier = Modifier.height(48.dp))
+      }
     }
+  }
 }
 
-// RESTORATION OF ORIGINAL HIGH-FIDELITY COMPONENTS
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeDashboardView(
@@ -1084,53 +1276,192 @@ fun HomeDashboardView(
 ) {
   val context = LocalContext.current
   val prefs = remember { context.getSharedPreferences("usra_prefs", Context.MODE_PRIVATE) }
-  var aiRecommendations by remember { mutableStateOf(prefs.getString("ai_detox_recommendations", null)) }
+  var aiRecommendations by remember {
+    mutableStateOf(prefs.getString("ai_detox_recommendations", null))
+  }
   var aiLoading by remember { mutableStateOf(false) }
   val scope = rememberCoroutineScope()
+
   var tts by remember { mutableStateOf<android.speech.tts.TextToSpeech?>(null) }
   var stressLevel by remember { mutableStateOf(prefs.getFloat("ai_family_stress_level", 5f)) }
   var selectedTimeMode by remember { mutableStateOf(prefs.getString("ai_family_time_mode", "Current System Time") ?: "Current System Time") }
   var targetWellnessScore by remember { mutableStateOf(prefs.getFloat("target_wellness_score", 80f)) }
 
   LaunchedEffect(Unit) {
-    FirestoreManager.loadWellnessData(context, { dbStress, dbTimeMode, dbMood, dbTargetScore, dbScreenGoal ->
+    FirestoreManager.loadWellnessData(
+      context = context,
+      onSuccess = { dbStress, dbTimeMode, dbMood, dbTargetScore, dbScreenGoal ->
         stressLevel = dbStress
         selectedTimeMode = dbTimeMode
         targetWellnessScore = dbTargetScore
         onScreenTimeGoalChange(dbScreenGoal)
-    })
+      },
+      onFailure = {
+        Log.d("HomeDashboardView", "No existing cloud backup, using local settings")
+      }
+    )
   }
 
   DisposableEffect(context) {
     val textToSpeech = android.speech.tts.TextToSpeech(context) { status ->
-      if (status == android.speech.tts.TextToSpeech.SUCCESS) tts?.setLanguage(java.util.Locale.UK)
+      if (status == android.speech.tts.TextToSpeech.SUCCESS) {
+        tts?.setLanguage(java.util.Locale.UK)
+      }
     }
     tts = textToSpeech
-    onDispose { tts?.stop(); tts?.shutdown() }
+    onDispose {
+      textToSpeech.stop()
+      textToSpeech.shutdown()
+    }
   }
 
-  val infiniteTransition = rememberInfiniteTransition(label = "Pulse")
-  val pulseAlpha by infiniteTransition.animateFloat(0.3f, 1.0f, infiniteRepeatable(tween(1000), RepeatMode.Reverse), label = "Alpha")
+  var momScreenTime by remember { mutableStateOf(prefs.getFloat("mom_screen_time", 4.0f)) }
+  var momSleepLog by remember { mutableStateOf(prefs.getFloat("mom_sleep_log", 7.0f)) }
 
-  val currentScore = ((screenTime / 12f) * 60f + ((10f - sleepLog) / 6f) * 40f).coerceIn(5f, 100f)
+  var dadScreenTime by remember { mutableStateOf(prefs.getFloat("dad_screen_time", 5.0f)) }
+  var dadSleepLog by remember { mutableStateOf(prefs.getFloat("dad_sleep_log", 6.5f)) }
+
+  var selectedMember by remember { mutableStateOf("Sami (You)") }
+
+  val activeScreenVal = when (selectedMember) {
+      "Sami (You)" -> screenTime
+      "Mom (Working Parent)" -> momScreenTime
+      else -> dadScreenTime
+  }
+  val activeSleepVal = when (selectedMember) {
+      "Sami (You)" -> sleepLog
+      "Mom (Working Parent)" -> momSleepLog
+      else -> dadSleepLog
+  }
+
+  LaunchedEffect(aiRecommendations) {
+    if (aiRecommendations != null) {
+      prefs.edit().putString("ai_detox_recommendations", aiRecommendations).apply()
+    } else {
+      prefs.edit().remove("ai_detox_recommendations").apply()
+    }
+  }
+
+  val infiniteTransition = rememberInfiniteTransition(label = "PulseWarningDot")
+  val pulseAlpha by infiniteTransition.animateFloat(
+    initialValue = 0.3f,
+    targetValue = 1.0f,
+    animationSpec = infiniteRepeatable(
+      animation = tween(1000, easing = LinearEasing),
+      repeatMode = RepeatMode.Reverse
+    ),
+    label = "WarningDotAlpha"
+  )
+
+  // Live client-side evaluation engine matrix
+  val currentScore = ((activeScreenVal / 12f) * 60f + ((10f - activeSleepVal) / 6f) * 40f).coerceIn(5f, 100f)
   val weeklyScores = listOf(42f, 68f, 85f, 58f, 35f, 22f, currentScore)
   val weeklyDays = listOf("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
 
   val riskConfig = when {
-    screenTime > 7.0f && sleepLog < 6.0f -> RiskConfig("🔴 HIGH RISK", "Burnout indicators detected.", Color(0xFFFFF5F5), Color(0xFFFEE2E2), Color(0xFFDC2626), Color(0xFFEF4444))
-    else -> RiskConfig("🟢 LOW RISK", "Digital fatigue is low.", Color(0xFFE2F7EA), Color(0xFFBFF0D4), Color(0xFF047857), Color(0xFF10B981))
+    activeScreenVal > 7.0f && activeSleepVal < 6.0f -> {
+      RiskConfig(
+        title = "🔴 HIGH RISK",
+        desc = "Late-night screen usage + low sleep is matching high burnout indicators for $selectedMember.",
+        bgColor = Color(0xFFFFF5F5),
+        borderColor = Color(0xFFFEE2E2),
+        textColor = Color(0xFFDC2626),
+        dotColor = Color(0xFFEF4444)
+      )
+    }
+    activeScreenVal < 4.0f && activeSleepVal > 7.0f -> {
+      RiskConfig(
+        title = "🟢 LOW RISK",
+        desc = "Great job! Digital fatigue is extremely low for $selectedMember. Keep up this healthy balance.",
+        bgColor = Color(0xFFE2F7EA),
+        borderColor = Color(0xFFBFF0D4),
+        textColor = Color(0xFF047857),
+        dotColor = Color(0xFF10B981)
+      )
+    }
+    else -> {
+      RiskConfig(
+        title = "🟡 MODERATE RISK",
+        desc = "Digital status for $selectedMember is moderately balanced but could improve.",
+        bgColor = Color(0xFFFFFBEB),
+        borderColor = Color(0xFFFEF3C7),
+        textColor = Color(0xFFD97706),
+        dotColor = Color(0xFFF59E0B)
+      )
+    }
   }
 
-  LazyColumn(modifier = Modifier.fillMaxSize().padding(horizontal = 20.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
+  var isRefreshing by remember { mutableStateOf(false) }
+
+  PullToRefreshBox(
+    isRefreshing = isRefreshing,
+    onRefresh = {
+      isRefreshing = true
+      scope.launch {
+        kotlinx.coroutines.delay(1200) // Simulating network/data refresh
+        isRefreshing = false
+      }
+    },
+    modifier = Modifier.fillMaxSize()
+  ) {
+    LazyColumn(
+      modifier = Modifier
+        .fillMaxSize()
+        .padding(horizontal = 20.dp),
+      verticalArrangement = Arrangement.spacedBy(18.dp)
+    ) {
+      // Top Bar Welcome Greeting
     item {
       Spacer(modifier = Modifier.height(16.dp))
-      Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+      Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+      ) {
         Column {
-          Text(text = "Hello, $userName 👋", style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold, color = DarkSlate))
-          Text(text = "Your digital balance today", color = MutedGray, fontSize = 14.sp)
+          Text(
+            text = "Good morning, $userName 👋",
+            style = MaterialTheme.typography.titleLarge.copy(
+              fontWeight = FontWeight.Bold,
+              fontSize = 24.sp,
+              color = DarkSlate
+            )
+          )
+          Text(
+            text = "Your digital balance today",
+            style = MaterialTheme.typography.bodyMedium.copy(
+              color = MutedGray,
+              fontSize = 14.sp
+            )
+          )
         }
-        Box(modifier = Modifier.size(48.dp).clip(CircleShape).background(AccentBlueSoft).clickable { onAccountClick() }, contentAlignment = Alignment.Center) {
-          Text(text = userName.take(1).uppercase(), color = AccentBlue, fontWeight = FontWeight.Bold)
+        // Rounded profile placeholder avatar row
+        Row(
+          verticalAlignment = Alignment.CenterVertically,
+          horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+          Box(
+            modifier = Modifier
+              .size(48.dp)
+              .clip(CircleShape)
+              .border(2.dp, OffWhite, CircleShape)
+              .background(AccentBlueSoft)
+              .clickable { onAccountClick() }
+              .testTag("account_profile_button"),
+            contentAlignment = Alignment.Center
+          ) {
+            Box(
+              modifier = Modifier
+                .fillMaxSize()
+                .background(AccentBlue.copy(alpha = 0.2f))
+            )
+            Text(
+              text = if (userName.isNotEmpty()) userName.take(1).uppercase() else "S",
+              color = AccentBlue,
+              fontWeight = FontWeight.Medium,
+              fontSize = 18.sp
+            )
+          }
         }
       }
     }
@@ -1195,14 +1526,41 @@ fun HomeDashboardView(
 
     // Dynamic Burnout Evaluation Indicator Card
     item {
-      Box(modifier = Modifier.fillMaxWidth().shadow(2.dp, RoundedCornerShape(32.dp)).clip(RoundedCornerShape(32.dp)).background(riskConfig.bgColor).border(1.dp, riskConfig.borderColor, RoundedCornerShape(32.dp)).padding(20.dp)) {
+      Box(
+        modifier = Modifier
+          .fillMaxWidth()
+          .shadow(
+            elevation = 2.dp,
+            shape = RoundedCornerShape(32.dp),
+            ambientColor = Color.Black.copy(alpha = 0.04f),
+            spotColor = Color.Black.copy(alpha = 0.04f)
+          )
+          .clip(RoundedCornerShape(32.dp))
+          .background(riskConfig.bgColor)
+          .border(1.dp, riskConfig.borderColor, RoundedCornerShape(32.dp))
+          .padding(20.dp)
+      ) {
         Column {
-          Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            Box(modifier = Modifier.size(8.dp).clip(CircleShape).background(riskConfig.dotColor.copy(alpha = pulseAlpha)))
-            Text(text = riskConfig.title, color = riskConfig.textColor, fontWeight = FontWeight.Bold, fontSize = 11.sp)
+          Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+          ) {
+            Box(
+              modifier = Modifier
+                .size(8.dp)
+                .clip(CircleShape)
+                .background(riskConfig.dotColor.copy(alpha = pulseAlpha))
+            )
+            Text(
+              text = riskConfig.title,
+              style = MaterialTheme.typography.labelSmall.copy(
+                fontWeight = FontWeight.Bold,
+                color = riskConfig.textColor,
+                fontSize = 11.sp,
+                letterSpacing = 1.sp
+              )
+            )
           }
-          Text(text = "Burnout AI Tracker Evaluation", fontWeight = FontWeight.Bold, color = DarkSlate)
-          Text(text = riskConfig.desc, color = MutedGray, fontSize = 14.sp)
           Spacer(modifier = Modifier.height(4.dp))
           Text(
             text = "Burnout Tracker Evaluation",
@@ -1225,9 +1583,8 @@ fun HomeDashboardView(
       }
     }
 
+    // Burnout AI Tracker Control Center (Sliders)
     item {
-      ManualScreenTimeLogCard(screenTime, onScreenTimeChange, screenTimeGoal, onScreenTimeGoalChange)
-    }
       Box(
         modifier = Modifier
           .fillMaxWidth()
@@ -1260,25 +1617,181 @@ fun HomeDashboardView(
           )
           Spacer(modifier = Modifier.height(16.dp))
 
-    item {
-      Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-        MetricItemCard(Modifier.weight(1f), "${"%.1f".format(screenTime)}h", "Screen", AccentBlue)
-        MetricItemCard(Modifier.weight(1f), "${"%.1f".format(sleepLog)}h", "Sleep", AccentGreen)
-        MetricItemCard(Modifier.weight(1f), selectedMood ?: "Okay", "Mood", Color(0xFFF59E0B))
-      }
-    }
+          // Profile Chip Selector Row
+          Row(
+            modifier = Modifier
+              .fillMaxWidth()
+              .horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically
+          ) {
+            listOf(
+              Triple("Sami (You)", "S", AccentBlue),
+              Triple("Mom (Working Parent)", "M", AccentGreen),
+              Triple("Dad (Work Mode)", "D", AmberBurnout)
+            ).forEach { (memberName, initial, color) ->
+              val isSelected = selectedMember == memberName
+              val memberScreen = when (memberName) {
+                "Sami (You)" -> screenTime
+                "Mom (Working Parent)" -> momScreenTime
+                else -> dadScreenTime
+              }
+              val memberSleep = when (memberName) {
+                "Sami (You)" -> sleepLog
+                "Mom (Working Parent)" -> momSleepLog
+                else -> dadSleepLog
+              }
 
-    item {
-      WeeklyTrendsChartCard(weeklyScores, weeklyDays, targetWellnessScore, { targetWellnessScore = it }, stressLevel, selectedTimeMode, selectedMood ?: "Calm", screenTimeGoal)
-    }
-
-    item {
-      Box(modifier = Modifier.fillMaxWidth().shadow(2.dp, RoundedCornerShape(32.dp)).clip(RoundedCornerShape(32.dp)).background(AccentGreenSoft).border(1.dp, Color(0xFFBFF0D4), RoundedCornerShape(32.dp)).clickable { onNavigateToHarmony() }.padding(20.dp)) {
-        Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
-          Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-            Text(text = "Family Harmony Score", fontWeight = FontWeight.Bold, color = DarkSlate)
+              Card(
+                colors = CardDefaults.cardColors(
+                  containerColor = if (isSelected) color.copy(alpha = 0.12f) else Color.White
+                ),
+                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier
+                  .width(160.dp)
+                  .clickable { selectedMember = memberName }
+                  .border(
+                    width = if (isSelected) 2.dp else 1.dp,
+                    color = if (isSelected) color else Color(0xFFECEFF3),
+                    shape = RoundedCornerShape(12.dp)
+                  )
+              ) {
+                Row(
+                  modifier = Modifier.padding(8.dp),
+                  verticalAlignment = Alignment.CenterVertically,
+                  horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                  Box(
+                    modifier = Modifier
+                      .size(28.dp)
+                      .clip(CircleShape)
+                      .background(color),
+                    contentAlignment = Alignment.Center
+                  ) {
+                    Text(
+                      text = initial,
+                      color = Color.White,
+                      fontWeight = FontWeight.Bold,
+                      fontSize = 13.sp
+                    )
+                  }
+                  Column {
+                    Text(
+                      text = memberName.split(" ").first(),
+                      fontWeight = FontWeight.Bold,
+                      fontSize = 12.5.sp,
+                      color = DarkSlate,
+                      maxLines = 1
+                    )
+                    Text(
+                      text = "${"%.1f".format(memberScreen)}h • ${"%.1f".format(memberSleep)}h sleep",
+                      fontSize = 9.5.sp,
+                      color = MutedGray,
+                      maxLines = 1
+                    )
+                  }
+                }
+              }
+            }
           }
-          Icon(imageVector = Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null, tint = AccentGreen)
+
+          Spacer(modifier = Modifier.height(16.dp))
+
+          // Screen Time Progress Indicator
+          Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+          ) {
+            Row(
+              verticalAlignment = Alignment.CenterVertically,
+              horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+              Text(text = "📱", fontSize = 16.sp)
+              Text(
+                text = "Daily Screen Time",
+                style = MaterialTheme.typography.bodyMedium.copy(
+                  fontWeight = FontWeight.SemiBold,
+                  color = DarkSlate,
+                  fontSize = 13.sp
+                )
+              )
+            }
+            Text(
+              text = "${"%.1f".format(activeScreenVal)}h",
+              style = MaterialTheme.typography.bodyMedium.copy(
+                fontWeight = FontWeight.Bold,
+                color = AccentBlue,
+                fontSize = 14.sp
+              )
+            )
+          }
+          Spacer(modifier = Modifier.height(6.dp))
+          Box(
+            modifier = Modifier
+              .fillMaxWidth()
+              .height(12.dp)
+              .clip(RoundedCornerShape(6.dp))
+              .background(AccentBlueSoft)
+              .testTag("screen_time_progress_bar")
+          ) {
+            val fraction = (activeScreenVal / 12f).coerceIn(0f, 1f)
+            Box(
+              modifier = Modifier
+                .fillMaxWidth(fraction)
+                .fillMaxHeight()
+                .background(AccentBlue)
+            )
+          }
+
+          Spacer(modifier = Modifier.height(16.dp))
+
+          // Sleep Log Progress Indicator
+          Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+          ) {
+            Row(
+              verticalAlignment = Alignment.CenterVertically,
+              horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+              Text(text = "😴", fontSize = 16.sp)
+              Text(
+                text = "Nightly Sleep duration",
+                style = MaterialTheme.typography.bodyMedium.copy(
+                  fontWeight = FontWeight.SemiBold,
+                  color = DarkSlate,
+                  fontSize = 13.sp
+                )
+              )
+            }
+            Text(
+              text = "${"%.1f".format(activeSleepVal)}h",
+              style = MaterialTheme.typography.bodyMedium.copy(
+                fontWeight = FontWeight.Bold,
+                color = AccentGreen,
+                fontSize = 14.sp
+              )
+            )
+          }
+          Spacer(modifier = Modifier.height(6.dp))
+          Box(
+            modifier = Modifier
+              .fillMaxWidth()
+              .height(12.dp)
+              .clip(RoundedCornerShape(6.dp))
+              .background(AccentGreenSoft)
+              .testTag("sleep_log_progress_bar")
+          ) {
+            val fraction = (activeSleepVal / 10f).coerceIn(0f, 1f)
+            Box(
+              modifier = Modifier
+                .fillMaxWidth(fraction)
+                .fillMaxHeight()
+                .background(AccentGreen)
+            )
+          }
         }
       }
     }
@@ -1716,11 +2229,50 @@ fun HomeDashboardView(
 }
 
 @Composable
-fun MetricItemCard(modifier: Modifier, value: String, title: String, valueColor: Color) {
-  Box(modifier = modifier.shadow(1.dp, RoundedCornerShape(24.dp)).clip(RoundedCornerShape(24.dp)).background(Color.White).padding(16.dp), contentAlignment = Alignment.Center) {
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-      Text(text = title.uppercase(), fontSize = 10.sp, color = MutedGray, fontWeight = FontWeight.Bold)
-      Text(text = value, fontWeight = FontWeight.Bold, color = valueColor, fontSize = 18.sp)
+fun MetricItemCard(
+  modifier: Modifier = Modifier,
+  value: String,
+  title: String,
+  valueColor: Color
+) {
+  Box(
+    modifier = modifier
+      .shadow(
+        elevation = 3.dp,
+        shape = RoundedCornerShape(24.dp),
+        ambientColor = Color.Black.copy(alpha = 0.03f),
+        spotColor = Color.Black.copy(alpha = 0.03f)
+      )
+      .clip(RoundedCornerShape(24.dp))
+      .background(Color.White)
+      .border(1.dp, Color.White, RoundedCornerShape(24.dp))
+      .padding(vertical = 16.dp, horizontal = 12.dp),
+    contentAlignment = Alignment.Center
+  ) {
+    Column(
+      horizontalAlignment = Alignment.CenterHorizontally,
+      verticalArrangement = Arrangement.Center
+    ) {
+      Text(
+        text = title.uppercase(),
+        style = MaterialTheme.typography.labelSmall.copy(
+          fontWeight = FontWeight.Bold,
+          color = MutedGray,
+          fontSize = 10.sp,
+          letterSpacing = 0.5.sp
+        )
+      )
+      Spacer(modifier = Modifier.height(4.dp))
+      Text(
+        text = value,
+        style = MaterialTheme.typography.titleMedium.copy(
+          fontWeight = FontWeight.Bold,
+          color = valueColor,
+          fontSize = 18.sp
+        ),
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis
+      )
     }
   }
 }
@@ -1736,24 +2288,151 @@ fun FamilyHarmonyView(
 ) {
   val context = LocalContext.current
   val prefs = remember { context.getSharedPreferences("usra_prefs", Context.MODE_PRIVATE) }
-  var stressLevel by remember { mutableStateOf(prefs.getFloat("ai_family_stress_level", 5f)) }
-  var selectedTimeMode by remember { mutableStateOf(prefs.getString("ai_family_time_mode", "Current System Time") ?: "Current System Time") }
-  var targetWellnessScore by remember { mutableStateOf(prefs.getFloat("target_wellness_score", 80f)) }
 
-  LazyColumn(modifier = Modifier.fillMaxSize().padding(horizontal = 20.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
+  var stressLevel by remember {
+    mutableStateOf(prefs.getFloat("ai_family_stress_level", 5f))
+  }
+  var aiRecommendations by remember {
+    mutableStateOf(prefs.getString("ai_family_recommendations", null))
+  }
+  var selectedTimeMode by remember {
+    mutableStateOf(prefs.getString("ai_family_time_mode", "Current System Time") ?: "Current System Time")
+  }
+  var targetWellnessScore by remember {
+    mutableStateOf(prefs.getFloat("target_wellness_score", 80f))
+  }
+  var aiLoading by remember { mutableStateOf(false) }
+  val scope = rememberCoroutineScope()
+
+  LaunchedEffect(Unit) {
+    FirestoreManager.loadWellnessData(
+      context = context,
+      onSuccess = { dbStress, dbTimeMode, dbMood, dbTargetScore, dbScreenGoal ->
+        stressLevel = dbStress
+        selectedTimeMode = dbTimeMode
+        targetWellnessScore = dbTargetScore
+        onScreenTimeGoalChange(dbScreenGoal)
+        onTriggerToast("☁️ Settings restored seamlessly from Cloud!", "success")
+      },
+      onFailure = {
+        Log.d("FamilyHarmonyView", "No existing cloud backup, using local settings")
+      }
+    )
+  }
+
+  LazyColumn(
+    modifier = Modifier
+      .fillMaxSize()
+      .padding(horizontal = 20.dp),
+    verticalArrangement = Arrangement.spacedBy(18.dp)
+  ) {
+    // Header with sync button
     item {
+      var isSyncing by remember { mutableStateOf(false) }
+      val rotation = remember { Animatable(0f) }
+      val syncScope = rememberCoroutineScope()
+
       Spacer(modifier = Modifier.height(16.dp))
-      Text(text = "Family Harmony Index", style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold, color = DarkSlate))
-      Button(onClick = {
-        FirestoreManager.saveWellnessData(context, stressLevel, selectedTimeMode, currentUserMood, targetWellnessScore, screenTimeGoal, {
-            onTriggerToast("Cloud Sync Complete!", "sync")
-        })
-      }, colors = ButtonDefaults.buttonColors(containerColor = AccentGreen)) {
-        Text("Sync Data")
+      Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+      ) {
+        Column(modifier = Modifier.weight(1f)) {
+          Text(
+            text = "Family Harmony Index",
+            style = MaterialTheme.typography.titleLarge.copy(
+              fontWeight = FontWeight.Bold,
+              fontSize = 24.sp,
+              color = DarkSlate
+            )
+          )
+          Text(
+            text = "Tracking collective screen balance seamlessly",
+            style = MaterialTheme.typography.bodyMedium.copy(
+              color = MutedGray,
+              fontSize = 14.sp
+            )
+          )
+        }
+
+        // Beautiful family balance sync button
+        IconButton(
+          onClick = {
+            if (!isSyncing) {
+              isSyncing = true
+              syncScope.launch {
+                rotation.animateTo(
+                  targetValue = rotation.value + 360f,
+                  animationSpec = infiniteRepeatable(
+                    animation = tween(1000, easing = LinearEasing),
+                    repeatMode = RepeatMode.Restart
+                  )
+                )
+              }
+              FirestoreManager.saveWellnessData(
+                context = context,
+                stressLevel = stressLevel,
+                timeMode = selectedTimeMode,
+                mood = currentUserMood,
+                targetWellnessScore = targetWellnessScore,
+                screenTimeGoal = screenTimeGoal,
+                onSuccess = {
+                  FirestoreManager.loadWellnessData(
+                    context = context,
+                    onSuccess = { dbStress, dbTimeMode, dbMood, dbTargetScore, dbScreenGoal ->
+                      stressLevel = dbStress
+                      selectedTimeMode = dbTimeMode
+                      targetWellnessScore = dbTargetScore
+                      onScreenTimeGoalChange(dbScreenGoal)
+                      isSyncing = false
+                      syncScope.launch {
+                        rotation.snapTo(0f)
+                      }
+                      onTriggerToast(
+                        "🔄 Cloud Sync complete! Stress & Preferences backed up safely.",
+                        "sync"
+                      )
+                    },
+                    onFailure = {
+                      isSyncing = false
+                      syncScope.launch {
+                        rotation.snapTo(0f)
+                      }
+                      onTriggerToast("🔄 Family screen balance synchronized with household members!", "sync")
+                    }
+                  )
+                },
+                onFailure = { e ->
+                  isSyncing = false
+                  syncScope.launch {
+                    rotation.snapTo(0f)
+                  }
+                  onTriggerToast("⚠️ Sync completed locally (Offline Mode)", "sync")
+                }
+              )
+            }
+          },
+          modifier = Modifier
+            .shadow(2.dp, CircleShape)
+            .background(Color.White, CircleShape)
+            .size(44.dp)
+            .testTag("family_sync_button")
+        ) {
+          Icon(
+            imageVector = Icons.Default.Sync,
+            contentDescription = "Sync Family Balance",
+            tint = AccentGreen,
+            modifier = Modifier
+              .size(22.dp)
+              .graphicsLayer(rotationZ = rotation.value)
+          )
+        }
       }
     }
+
+    // Double Gauge with text overlays
     item {
-      HouseholdMemberRow(currentUserDisplayName, "Mood: $currentUserMood", "$currentUserScreenTime hrs", currentUserScreenTime > 6f, currentUserDisplayName.take(1), AccentBlue)
       Box(
         modifier = Modifier
           .fillMaxWidth()
@@ -2163,16 +2842,52 @@ fun FamilyHarmonyView(
 }
 
 @Composable
-fun HouseholdMemberRow(name: String, moodDescription: String, screenTime: String, isHighest: Boolean, avatarInitials: String, avatarColor: Color) {
-  Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
-    Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
-      Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-        Box(modifier = Modifier.size(40.dp).clip(CircleShape).background(avatarColor.copy(alpha = 0.15f)), contentAlignment = Alignment.Center) {
-          Text(text = avatarInitials, color = avatarColor, fontWeight = FontWeight.Bold)
+fun HouseholdMemberRow(
+  name: String,
+  moodDescription: String,
+  screenTime: String,
+  isHighest: Boolean,
+  avatarInitials: String,
+  avatarColor: Color
+) {
+  // Bold outline if Sami as highest
+  Card(
+    modifier = Modifier
+      .fillMaxWidth()
+      .shadow(1.dp, RoundedCornerShape(20.dp))
+      .then(
+        if (isHighest) Modifier.border(1.5.dp, AmberBurnout, RoundedCornerShape(20.dp))
+        else Modifier
+      ),
+    colors = CardDefaults.cardColors(containerColor = Color.White),
+    shape = RoundedCornerShape(20.dp)
+  ) {
+    Row(
+      modifier = Modifier
+        .fillMaxWidth()
+        .padding(16.dp),
+      verticalAlignment = Alignment.CenterVertically,
+      horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+      Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp)
+      ) {
+        Box(
+          modifier = Modifier
+            .size(40.dp)
+            .clip(CircleShape)
+            .background(avatarColor.copy(alpha = 0.15f)),
+          contentAlignment = Alignment.Center
+        ) {
+          Text(
+            text = avatarInitials,
+            color = avatarColor,
+            fontWeight = FontWeight.Bold,
+            fontSize = 15.sp
+          )
         }
         Column {
-          Text(text = name, fontWeight = FontWeight.Bold, color = DarkSlate)
-          Text(text = moodDescription, color = MutedGray, fontSize = 12.sp)
           Row(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(4.dp)
@@ -2641,7 +3356,6 @@ fun QuestVerificationDialog(
           }
         }
       }
-      Text(text = screenTime, fontWeight = FontWeight.Bold, color = if (isHighest) Color.Red else DarkSlate)
     }
   }
 }
@@ -2660,80 +3374,150 @@ fun ReconnectionQuestsView(
   aiLoading: Boolean,
   onGenerateAIQuests: (onSuccess: () -> Unit) -> Unit
 ) {
-    LazyColumn(modifier = Modifier.fillMaxSize().padding(horizontal = 20.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
-        item {
-            Spacer(modifier = Modifier.height(16.dp))
-            Text(text = "Reconnection Quests", style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold, color = DarkSlate))
-        }
-        item {
-            Button(onClick = { onGenerateAIQuests({}) }, enabled = !aiLoading, colors = ButtonDefaults.buttonColors(containerColor = AccentBlue)) {
-                Text(if (aiLoading) "Generating..." else "Get AI Quests")
+  var activeVerificationQuestIndex by remember { mutableStateOf<Int?>(null) }
+
+  val quests = listOf(
+    QuestData(
+      "🧘 Solo Box Breathing",
+      "3-minute fast focus reset. +15 Mood Score",
+      Icons.Filled.Spa,
+      AccentBlue,
+      "quest_item_0"
+    ),
+    QuestData(
+      "🚶 Evening Family Stroll",
+      "20-minute offline neighborhood walk. +20 Harmony",
+      Icons.AutoMirrored.Filled.DirectionsWalk,
+      AmberBurnout,
+      "quest_item_1"
+    ),
+    QuestData(
+      "🍲 Cook Together",
+      "Collaborative device-free kitchen takeover. +30 Family Bond",
+      Icons.Filled.Restaurant,
+      AccentGreen,
+      "quest_item_2"
+    ),
+    QuestData(
+      aiQuestTitle1,
+      aiQuestSubtitle1,
+      Icons.Filled.AutoAwesome,
+      AccentBlue,
+      "quest_item_3"
+    ),
+    QuestData(
+      aiQuestTitle2,
+      aiQuestSubtitle2,
+      Icons.Filled.AutoAwesome,
+      AccentGreen,
+      "quest_item_4"
+    )
+  )
+
+  LazyColumn(
+    modifier = Modifier
+      .fillMaxSize()
+      .padding(horizontal = 20.dp),
+    verticalArrangement = Arrangement.spacedBy(18.dp)
+  ) {
+    item {
+      Spacer(modifier = Modifier.height(16.dp))
+      Text(
+        text = "Reconnection Quests",
+        style = MaterialTheme.typography.titleLarge.copy(
+          fontWeight = FontWeight.Bold,
+          fontSize = 24.sp,
+          color = DarkSlate
+        )
+      )
+      Text(
+        text = "Positive offline habits to lower your burnout score",
+        style = MaterialTheme.typography.bodyMedium.copy(
+          color = MutedGray,
+          fontSize = 14.sp
+        )
+      )
+    }
+
+    // WELLBEING PROGRESS BAR & STATUS BADGE CARD FOR QUESTS
+    item {
+      val checkedCount = questsChecked.count { it }
+      val totalQuests = quests.size
+      val progressPercentage = checkedCount.toFloat() / totalQuests
+      
+      val (badgeText, badgeColor, badgeBg) = when (checkedCount) {
+        0 -> Triple("Beginner", MutedGray, SoftNeutralBackground)
+        in 1..2 -> Triple("Balanced", AccentBlue, AccentBlueSoft)
+        in 3..4 -> Triple("Mindful Creator", AmberBurnout, AmberBurnout.copy(alpha = 0.12f))
+        else -> Triple("Zen Master", AccentGreen, AccentGreenSoft)
+      }
+
+      Card(
+        modifier = Modifier
+          .fillMaxWidth()
+          .shadow(1.dp, RoundedCornerShape(24.dp))
+          .testTag("reconnection_progress_card"),
+        colors = CardDefaults.cardColors(containerColor = Color.White),
+        shape = RoundedCornerShape(24.dp)
+      ) {
+        Column(modifier = Modifier.padding(20.dp)) {
+          Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+          ) {
+            Column {
+              Text(
+                text = "Quest Completion Progress",
+                style = MaterialTheme.typography.titleMedium.copy(
+                  fontWeight = FontWeight.Bold,
+                  color = DarkSlate,
+                  fontSize = 16.sp
+                )
+              )
+              Text(
+                text = "$checkedCount of $totalQuests completed today",
+                style = MaterialTheme.typography.bodySmall.copy(
+                  color = MutedGray,
+                  fontSize = 12.sp
+                )
+              )
             }
+            // Status Badge
+            Box(
+              modifier = Modifier
+                .clip(RoundedCornerShape(12.dp))
+                .background(badgeBg)
+                .padding(horizontal = 10.dp, vertical = 4.dp)
+            ) {
+              Text(
+                text = badgeText.uppercase(),
+                style = MaterialTheme.typography.bodySmall.copy(
+                  fontWeight = FontWeight.Black,
+                  color = badgeColor,
+                  fontSize = 10.sp,
+                  letterSpacing = 0.5.sp
+                )
+              )
+            }
+          }
+
+          Spacer(modifier = Modifier.height(16.dp))
+
+          // Progress Bar
+          LinearProgressIndicator(
+            progress = { progressPercentage },
+            modifier = Modifier
+              .fillMaxWidth()
+              .height(10.dp)
+              .clip(RoundedCornerShape(10.dp))
+              .testTag("quests_progress_bar"),
+            color = badgeColor,
+            trackColor = Color.LightGray.copy(alpha = 0.25f)
+          )
         }
-    }
-}
-
-@Composable
-fun FamilyFeedView(currentUserDisplayName: String, onTriggerToast: (String, String) -> Unit) {
-    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-      Text("Family Feed Coming Soon", color = MutedGray)
-    }
-}
-
-@Composable
-fun MentalResetModal(onClose: () -> Unit) {
-    var isInhaling by remember { mutableStateOf(true) }
-    val scale = remember { Animatable(0.4f) }
-    LaunchedEffect(Unit) {
-      while(true) {
-        isInhaling = true
-        scale.animateTo(1.0f, tween(4000))
-        isInhaling = false
-        scale.animateTo(0.4f, tween(4000))
       }
     }
-    Box(modifier = Modifier.fillMaxSize().background(SoftNeutralBackground), contentAlignment = Alignment.Center) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(40.dp)) {
-            Text("Mental Reset Active 🧘", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
-            Box(modifier = Modifier.size(200.dp * scale.value).clip(CircleShape).background(AccentBlue.copy(alpha = 0.5f)))
-            Text(if (isInhaling) "Breathe In..." else "Breathe Out...", fontSize = 24.sp, fontWeight = FontWeight.Bold, color = AccentBlue)
-            Button(onClick = onClose, colors = ButtonDefaults.buttonColors(containerColor = DarkSlate)) { Text("End Reset") }
-        }
-    }
-}
-
-@Composable
-fun AccountScreen(userName: String, onUserNameChange: (String) -> Unit, onResetApp: () -> Unit, onLogOut: () -> Unit, onClose: () -> Unit) {
-    Column(modifier = Modifier.fillMaxSize().background(SoftNeutralBackground).padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        Text("Account Settings", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold, color = DarkSlate)
-        Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = Color.White)) {
-          Column(Modifier.padding(16.dp)) {
-            Text("Logged in as: $userName", fontWeight = FontWeight.Bold)
-          }
-        }
-        Button(onClick = onLogOut, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = Color.LightGray, contentColor = DarkSlate)) { Text("Log Out") }
-        Button(onClick = onClose, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = DarkSlate)) { Text("Close") }
-    }
-}
-
-@Composable
-fun ManualScreenTimeLogCard(screenTime: Float, onScreenTimeChange: (Float) -> Unit, screenTimeGoal: Float, onScreenTimeGoalChange: (Float) -> Unit) {
-    Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = Color.White)) {
-        Column(modifier = Modifier.padding(20.dp)) {
-            Text("Daily Screen Time", fontWeight = FontWeight.Bold, color = DarkSlate)
-            Slider(value = screenTime, onValueChange = onScreenTimeChange, valueRange = 0f..24f, colors = SliderDefaults.colors(thumbColor = AccentBlue, activeTrackColor = AccentBlue))
-            Text("${"%.1f".format(screenTime)}h / ${"%.1f".format(screenTimeGoal)}h goal", color = MutedGray, fontSize = 12.sp)
-        }
-    }
-}
-
-@Composable
-fun WeeklyTrendsChartCard(scores: List<Float>, days: List<String>, target: Float, onTargetChange: (Float) -> Unit, stress: Float, timeMode: String, mood: String, goal: Float) {
-    Card(modifier = Modifier.fillMaxWidth().height(240.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
-        Column(Modifier.padding(20.dp)) {
-          Text("Weekly Burnout Trends", fontWeight = FontWeight.Bold, color = DarkSlate)
-          Spacer(Modifier.height(10.dp))
-          Canvas(Modifier.fillMaxSize()) {
 
     item {
       Column(
@@ -5550,55 +6334,35 @@ class BottomBarWithCutoutShape(
         val path = Path().apply {
             val width = size.width
             val height = size.height
-            val points = scores.mapIndexed { i, s -> i * (width / 6f) to height - (s / 100f * height) }
-            val path = Path().apply {
-              moveTo(points[0].first, points[0].second)
-              points.forEach { lineTo(it.first, it.second) }
-            }
-            drawPath(path, AccentBlue, style = Stroke(3.dp.toPx()))
-          }
-        }
-    }
-}
+            val centerX = width / 2f
+            val startX = centerX - cutoutWidth / 2f
+            val endX = centerX + cutoutWidth / 2f
 
-@Composable
-fun UsraAIChatScreen(userName: String, screenTime: Float, onScreenChange: (Float) -> Unit, sleep: Float, onSleepChange: (Float) -> Unit, onClose: () -> Unit) {
-    Column(modifier = Modifier.fillMaxSize().background(SoftNeutralBackground)) {
-        Text("Usra AI Wellness Coach", modifier = Modifier.padding(16.dp), fontWeight = FontWeight.Bold)
-        Box(Modifier.weight(1f))
-        Button(onClick = onClose, modifier = Modifier.padding(16.dp).fillMaxWidth()) { Text("Close") }
-    }
-}
-
-@Composable
-fun HealthTrackerDashboard(onClose: () -> Unit) {
-    Box(modifier = Modifier.fillMaxSize().background(SoftNeutralBackground), contentAlignment = Alignment.Center) {
-        Button(onClick = onClose) { Text("Back to Dashboard") }
-    }
-}
-
-@Composable
-fun BottomNavItem(selected: Boolean, onClick: () -> Unit, icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, activeColor: Color, modifier: Modifier = Modifier) {
-    Column(modifier = modifier.clip(RoundedCornerShape(12.dp)).clickable { onClick() }.padding(vertical = 8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-        Icon(imageVector = icon, contentDescription = label, tint = if (selected) activeColor else MutedGray)
-        Text(text = label, color = if (selected) activeColor else MutedGray, fontSize = 10.sp, fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal)
-    }
-}
-
-class BottomBarWithCutoutShape : androidx.compose.ui.graphics.Shape {
-    override fun createOutline(size: androidx.compose.ui.geometry.Size, layoutDirection: androidx.compose.ui.unit.LayoutDirection, density: androidx.compose.ui.unit.Density): androidx.compose.ui.graphics.Outline {
-        val path = Path().apply {
             moveTo(0f, 0f)
-            lineTo(size.width, 0f)
-            lineTo(size.width, size.height)
-            lineTo(0f, size.height)
+            lineTo(startX, 0f)
+
+            // Left side curve dropping smoothly into the notch center
+            cubicTo(
+                x1 = startX + cutoutWidth * 0.15f, y1 = 0f,
+                x2 = centerX - cutoutWidth * 0.25f, y2 = cutoutHeight,
+                x3 = centerX, y3 = cutoutHeight
+            )
+            // Right side curve rising smoothly back up to the bar top
+            cubicTo(
+                x1 = centerX + cutoutWidth * 0.25f, y1 = cutoutHeight,
+                x2 = endX - cutoutWidth * 0.15f, y2 = 0f,
+                x3 = endX, y3 = 0f
+            )
+
+            lineTo(width, 0f)
+            lineTo(width, height)
+            lineTo(0f, height)
             close()
         }
         return androidx.compose.ui.graphics.Outline.Generic(path)
     }
 }
 
-data class RiskConfig(val title: String, val desc: String, val bgColor: Color, val borderColor: Color, val textColor: Color, val dotColor: Color)
 // Custom navigation bar item for clean presentation
 @Composable
 fun BottomNavItem(
