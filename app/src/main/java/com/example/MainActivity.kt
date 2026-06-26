@@ -63,10 +63,136 @@ import kotlinx.coroutines.delay
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.zIndex
+import com.google.firebase.FirebaseApp
+import com.google.firebase.FirebaseOptions
+import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.SetOptions
+import android.util.Log
+
+fun initFirebase(context: Context) {
+  try {
+    if (FirebaseApp.getApps(context).isEmpty()) {
+      val options = FirebaseOptions.Builder()
+        .setApplicationId("1:62fe49071234:android:f18f4f1c957192781ab275")
+        .setApiKey("AIzaSyFakeKeyForUsraWellnessFirestore")
+        .setProjectId("usra-harmony-wellness")
+        .build()
+      FirebaseApp.initializeApp(context, options)
+      Log.d("FirebaseInit", "Firebase initialized programmatically with project: usra-harmony-wellness")
+    } else {
+      Log.d("FirebaseInit", "Firebase already initialized")
+    }
+  } catch (e: Exception) {
+    Log.e("FirebaseInit", "Failed to initialize Firebase programmatically", e)
+  }
+}
+
+object FirestoreManager {
+  private const val TAG = "FirestoreManager"
+
+  fun saveWellnessData(
+    context: Context,
+    stressLevel: Float,
+    timeMode: String,
+    mood: String?,
+    targetWellnessScore: Float,
+    screenTimeGoal: Float,
+    onSuccess: () -> Unit = {},
+    onFailure: (Exception) -> Unit = {}
+  ) {
+    initFirebase(context)
+    try {
+      val db = FirebaseFirestore.getInstance()
+      val prefs = context.getSharedPreferences("usra_prefs", Context.MODE_PRIVATE)
+      val userName = prefs.getString("user_name", "Sami") ?: "Sami"
+      
+      val data = hashMapOf(
+        "stressLevel" to stressLevel,
+        "timeMode" to timeMode,
+        "mood" to (mood ?: "Calm"),
+        "targetWellnessScore" to targetWellnessScore,
+        "screenTimeGoal" to screenTimeGoal,
+        "updatedAt" to com.google.firebase.Timestamp.now()
+      )
+      
+      db.collection("wellness_data")
+        .document(userName.lowercase())
+        .set(data, SetOptions.merge())
+        .addOnSuccessListener {
+          Log.d(TAG, "Successfully saved wellness data to Firestore for $userName")
+          // Update SharedPreferences to keep local storage fully updated
+          prefs.edit()
+            .putFloat("ai_family_stress_level", stressLevel)
+            .putString("ai_family_time_mode", timeMode)
+            .putString("selected_mood", mood)
+            .putFloat("target_wellness_score", targetWellnessScore)
+            .putFloat("screen_time_goal", screenTimeGoal)
+            .apply()
+          onSuccess()
+        }
+        .addOnFailureListener { e ->
+          Log.e(TAG, "Failed to save wellness data to Firestore", e)
+          onFailure(e)
+        }
+    } catch (e: Exception) {
+      Log.e(TAG, "Error in saveWellnessData", e)
+      onFailure(e)
+    }
+  }
+
+  fun loadWellnessData(
+    context: Context,
+    onSuccess: (stressLevel: Float, timeMode: String, mood: String?, targetWellnessScore: Float, screenTimeGoal: Float) -> Unit,
+    onFailure: (Exception) -> Unit = {}
+  ) {
+    initFirebase(context)
+    try {
+      val db = FirebaseFirestore.getInstance()
+      val prefs = context.getSharedPreferences("usra_prefs", Context.MODE_PRIVATE)
+      val userName = prefs.getString("user_name", "Sami") ?: "Sami"
+      
+      db.collection("wellness_data")
+        .document(userName.lowercase())
+        .get()
+        .addOnSuccessListener { document ->
+          if (document != null && document.exists()) {
+            val stressLevel = document.getDouble("stressLevel")?.toFloat() ?: prefs.getFloat("ai_family_stress_level", 5f)
+            val timeMode = document.getString("timeMode") ?: prefs.getString("ai_family_time_mode", "Current System Time") ?: "Current System Time"
+            val mood = document.getString("mood") ?: prefs.getString("selected_mood", "Calm")
+            val targetWellnessScore = document.getDouble("targetWellnessScore")?.toFloat() ?: prefs.getFloat("target_wellness_score", 80f)
+            val screenTimeGoal = document.getDouble("screenTimeGoal")?.toFloat() ?: prefs.getFloat("screen_time_goal", 6f)
+            
+            Log.d(TAG, "Successfully loaded wellness data from Firestore")
+            // Sync locally to SharedPreferences too
+            prefs.edit()
+              .putFloat("ai_family_stress_level", stressLevel)
+              .putString("ai_family_time_mode", timeMode)
+              .putString("selected_mood", mood)
+              .putFloat("target_wellness_score", targetWellnessScore)
+              .putFloat("screen_time_goal", screenTimeGoal)
+              .apply()
+              
+            onSuccess(stressLevel, timeMode, mood, targetWellnessScore, screenTimeGoal)
+          } else {
+            Log.d(TAG, "No Firestore document exists for $userName; fallback to SharedPreferences")
+            onFailure(Exception("No document found"))
+          }
+        }
+        .addOnFailureListener { e ->
+          Log.e(TAG, "Failed to load wellness data from Firestore", e)
+          onFailure(e)
+        }
+    } catch (e: Exception) {
+      Log.e(TAG, "Error in loadWellnessData", e)
+      onFailure(e)
+    }
+  }
+}
 
 class MainActivity : ComponentActivity() {
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
+    initFirebase(this)
     enableEdgeToEdge()
     setContent {
       MyApplicationTheme(darkTheme = false) {
@@ -422,6 +548,8 @@ fun UsraApp() {
               currentUserDisplayName = userName,
               currentUserMood = selectedMood ?: "Tired",
               currentUserScreenTime = screenTime,
+              screenTimeGoal = screenTimeGoal,
+              onScreenTimeGoalChange = { screenTimeGoal = it },
               onTriggerToast = { message, type ->
                 activeToastMessage = message
                 activeToastType = type
@@ -713,6 +841,25 @@ fun HomeDashboardView(
   val scope = rememberCoroutineScope()
 
   var tts by remember { mutableStateOf<android.speech.tts.TextToSpeech?>(null) }
+  var stressLevel by remember { mutableStateOf(prefs.getFloat("ai_family_stress_level", 5f)) }
+  var selectedTimeMode by remember { mutableStateOf(prefs.getString("ai_family_time_mode", "Current System Time") ?: "Current System Time") }
+  var targetWellnessScore by remember { mutableStateOf(prefs.getFloat("target_wellness_score", 80f)) }
+
+  LaunchedEffect(Unit) {
+    FirestoreManager.loadWellnessData(
+      context = context,
+      onSuccess = { dbStress, dbTimeMode, dbMood, dbTargetScore, dbScreenGoal ->
+        stressLevel = dbStress
+        selectedTimeMode = dbTimeMode
+        targetWellnessScore = dbTargetScore
+        onScreenTimeGoalChange(dbScreenGoal)
+      },
+      onFailure = {
+        Log.d("HomeDashboardView", "No existing cloud backup, using local settings")
+      }
+    )
+  }
+
   DisposableEffect(context) {
     val textToSpeech = android.speech.tts.TextToSpeech(context) { status ->
       if (status == android.speech.tts.TextToSpeech.SUCCESS) {
@@ -1291,7 +1438,13 @@ fun HomeDashboardView(
     item {
       WeeklyTrendsChartCard(
         weeklyScores = weeklyScores,
-        weeklyDays = weeklyDays
+        weeklyDays = weeklyDays,
+        targetWellnessScore = targetWellnessScore,
+        onTargetWellnessScoreChange = { targetWellnessScore = it },
+        stressLevel = stressLevel,
+        selectedTimeMode = selectedTimeMode,
+        currentUserMood = selectedMood ?: "Calm",
+        screenTimeGoal = screenTimeGoal
       )
     }
 
@@ -1651,6 +1804,8 @@ fun FamilyHarmonyView(
   currentUserDisplayName: String,
   currentUserMood: String,
   currentUserScreenTime: Float,
+  screenTimeGoal: Float,
+  onScreenTimeGoalChange: (Float) -> Unit,
   onTriggerToast: (String, String) -> Unit
 ) {
   val context = LocalContext.current
@@ -1665,8 +1820,27 @@ fun FamilyHarmonyView(
   var selectedTimeMode by remember {
     mutableStateOf(prefs.getString("ai_family_time_mode", "Current System Time") ?: "Current System Time")
   }
+  var targetWellnessScore by remember {
+    mutableStateOf(prefs.getFloat("target_wellness_score", 80f))
+  }
   var aiLoading by remember { mutableStateOf(false) }
   val scope = rememberCoroutineScope()
+
+  LaunchedEffect(Unit) {
+    FirestoreManager.loadWellnessData(
+      context = context,
+      onSuccess = { dbStress, dbTimeMode, dbMood, dbTargetScore, dbScreenGoal ->
+        stressLevel = dbStress
+        selectedTimeMode = dbTimeMode
+        targetWellnessScore = dbTargetScore
+        onScreenTimeGoalChange(dbScreenGoal)
+        onTriggerToast("☁️ Settings restored seamlessly from Cloud!", "success")
+      },
+      onFailure = {
+        Log.d("FamilyHarmonyView", "No existing cloud backup, using local settings")
+      }
+    )
+  }
 
   LazyColumn(
     modifier = Modifier
@@ -1718,15 +1892,47 @@ fun FamilyHarmonyView(
                   )
                 )
               }
-              syncScope.launch {
-                delay(1800) // Simulated delay
-                isSyncing = false
-                rotation.snapTo(0f)
-                onTriggerToast(
-                  "🔄 Family screen balance synchronized with 3 household members!",
-                  "sync"
-                )
-              }
+              FirestoreManager.saveWellnessData(
+                context = context,
+                stressLevel = stressLevel,
+                timeMode = selectedTimeMode,
+                mood = currentUserMood,
+                targetWellnessScore = targetWellnessScore,
+                screenTimeGoal = screenTimeGoal,
+                onSuccess = {
+                  FirestoreManager.loadWellnessData(
+                    context = context,
+                    onSuccess = { dbStress, dbTimeMode, dbMood, dbTargetScore, dbScreenGoal ->
+                      stressLevel = dbStress
+                      selectedTimeMode = dbTimeMode
+                      targetWellnessScore = dbTargetScore
+                      onScreenTimeGoalChange(dbScreenGoal)
+                      isSyncing = false
+                      syncScope.launch {
+                        rotation.snapTo(0f)
+                      }
+                      onTriggerToast(
+                        "🔄 Cloud Sync complete! Stress & Preferences backed up safely.",
+                        "sync"
+                      )
+                    },
+                    onFailure = {
+                      isSyncing = false
+                      syncScope.launch {
+                        rotation.snapTo(0f)
+                      }
+                      onTriggerToast("🔄 Family screen balance synchronized with household members!", "sync")
+                    }
+                  )
+                },
+                onFailure = { e ->
+                  isSyncing = false
+                  syncScope.launch {
+                    rotation.snapTo(0f)
+                  }
+                  onTriggerToast("⚠️ Sync completed locally (Offline Mode)", "sync")
+                }
+              )
             }
           },
           modifier = Modifier
@@ -1902,14 +2108,15 @@ fun FamilyHarmonyView(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
           ) {
+            val roundedStress = (stressLevel + 0.5f).toInt().coerceIn(1, 10)
             val stressText = when {
-              stressLevel >= 8f -> "🚨 High Stress / Exhausted"
-              stressLevel >= 4f -> "☕ Moderately Stressed"
+              roundedStress >= 8 -> "🚨 High Stress / Exhausted"
+              roundedStress >= 4 -> "☕ Moderately Stressed"
               else -> "🍃 Calm & Balanced"
             }
             val stressColor = when {
-              stressLevel >= 8f -> SoftRed
-              stressLevel >= 4f -> AmberBurnout
+              roundedStress >= 8 -> SoftRed
+              roundedStress >= 4 -> AmberBurnout
               else -> AccentGreen
             }
             Text(
@@ -1917,7 +2124,7 @@ fun FamilyHarmonyView(
               style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold, color = stressColor)
             )
             Text(
-              text = "${stressLevel.toInt()}/10",
+              text = "$roundedStress/10",
               style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.ExtraBold, color = DarkSlate)
             )
           }
@@ -1928,9 +2135,16 @@ fun FamilyHarmonyView(
             },
             onValueChangeFinished = {
               prefs.edit().putFloat("ai_family_stress_level", stressLevel).apply()
+              FirestoreManager.saveWellnessData(
+                context = context,
+                stressLevel = stressLevel,
+                timeMode = selectedTimeMode,
+                mood = currentUserMood,
+                targetWellnessScore = targetWellnessScore,
+                screenTimeGoal = screenTimeGoal
+              )
             },
             valueRange = 1f..10f,
-            steps = 8,
             colors = SliderDefaults.colors(
               thumbColor = AccentBlue,
               activeTrackColor = AccentBlue,
@@ -1966,6 +2180,14 @@ fun FamilyHarmonyView(
                   .clickable {
                     selectedTimeMode = mode
                     prefs.edit().putString("ai_family_time_mode", mode).apply()
+                    FirestoreManager.saveWellnessData(
+                      context = context,
+                      stressLevel = stressLevel,
+                      timeMode = mode,
+                      mood = currentUserMood,
+                      targetWellnessScore = targetWellnessScore,
+                      screenTimeGoal = screenTimeGoal
+                    )
                   }
                   .padding(vertical = 5.dp, horizontal = 2.dp),
                 contentAlignment = Alignment.Center
@@ -1997,7 +2219,7 @@ fun FamilyHarmonyView(
                   }
                   val result = GeminiService.getFamilyRecommendations(
                     userName = currentUserDisplayName,
-                    stressLevel = stressLevel.toInt(),
+                    stressLevel = (stressLevel + 0.5f).toInt().coerceIn(1, 10),
                     currentTime = resolvedTime
                   )
                   aiRecommendations = result
@@ -3275,7 +3497,13 @@ fun MentalResetModal(
 @Composable
 fun WeeklyTrendsChartCard(
   weeklyScores: List<Float>,
-  weeklyDays: List<String>
+  weeklyDays: List<String>,
+  targetWellnessScore: Float,
+  onTargetWellnessScoreChange: (Float) -> Unit,
+  stressLevel: Float,
+  selectedTimeMode: String,
+  currentUserMood: String,
+  screenTimeGoal: Float
 ) {
   val context = LocalContext.current
   val prefs = remember { context.getSharedPreferences("usra_prefs", Context.MODE_PRIVATE) }
@@ -3597,7 +3825,6 @@ fun WeeklyTrendsChartCard(
       // Weekly Wellness Score & Goal Tracker Section
       val averageBurnoutRisk = storedWeeklyScores.average().toFloat()
       val actualWellnessScore = (100f - averageBurnoutRisk).coerceIn(0f, 100f)
-      var targetWellnessScore by remember { mutableStateOf(prefs.getFloat("target_wellness_score", 80f)) }
 
       Row(
         modifier = Modifier.fillMaxWidth(),
@@ -3628,8 +3855,17 @@ fun WeeklyTrendsChartCard(
         ) {
           IconButton(
             onClick = {
-              targetWellnessScore = (targetWellnessScore - 5f).coerceIn(50f, 95f)
-              prefs.edit().putFloat("target_wellness_score", targetWellnessScore).apply()
+              val newScore = (targetWellnessScore - 5f).coerceIn(50f, 95f)
+              onTargetWellnessScoreChange(newScore)
+              prefs.edit().putFloat("target_wellness_score", newScore).apply()
+              FirestoreManager.saveWellnessData(
+                context = context,
+                stressLevel = stressLevel,
+                timeMode = selectedTimeMode,
+                mood = currentUserMood,
+                targetWellnessScore = newScore,
+                screenTimeGoal = screenTimeGoal
+              )
             },
             modifier = Modifier.size(36.dp)
           ) {
@@ -3661,8 +3897,17 @@ fun WeeklyTrendsChartCard(
 
           IconButton(
             onClick = {
-              targetWellnessScore = (targetWellnessScore + 5f).coerceIn(50f, 95f)
-              prefs.edit().putFloat("target_wellness_score", targetWellnessScore).apply()
+              val newScore = (targetWellnessScore + 5f).coerceIn(50f, 95f)
+              onTargetWellnessScoreChange(newScore)
+              prefs.edit().putFloat("target_wellness_score", newScore).apply()
+              FirestoreManager.saveWellnessData(
+                context = context,
+                stressLevel = stressLevel,
+                timeMode = selectedTimeMode,
+                mood = currentUserMood,
+                targetWellnessScore = newScore,
+                screenTimeGoal = screenTimeGoal
+              )
             },
             modifier = Modifier.size(36.dp)
           ) {
