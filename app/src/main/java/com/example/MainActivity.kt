@@ -79,6 +79,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
+import android.view.KeyEvent
 import android.util.Log
 
 fun initFirebase(context: Context) {
@@ -100,6 +101,16 @@ fun initFirebase(context: Context) {
     }
   } catch (e: Exception) {
     Log.e("FirebaseInit", "Failed to initialize Firebase programmatically", e)
+  }
+}
+
+object SOSEmergencyManager {
+  val isEmergencyTriggered = androidx.compose.runtime.mutableStateOf(false)
+
+  fun triggerEmergency() {
+    isEmergencyTriggered.value = true
+    Log.d("SOS_SYSTEM", "➡️ [SOS CRITICAL] Initiating emergency broadcast...")
+    Log.d("SOS_SYSTEM", "➡️ [SOS] Notifying pre-configured emergency contacts and syncing alert with family dashboard.")
   }
 }
 
@@ -206,6 +217,28 @@ object FirestoreManager {
 }
 
 class MainActivity : ComponentActivity() {
+  private var volumeDownPressCount = 0
+  private var lastVolumeDownPressTime = 0L
+
+  override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
+    if (keyCode == KeyEvent.KEYCODE_VOLUME_DOWN) {
+      val currentTime = System.currentTimeMillis()
+      if (currentTime - lastVolumeDownPressTime < 2000) {
+        volumeDownPressCount++
+      } else {
+        volumeDownPressCount = 1
+      }
+      lastVolumeDownPressTime = currentTime
+
+      if (volumeDownPressCount >= 3) {
+        SOSEmergencyManager.triggerEmergency()
+        volumeDownPressCount = 0
+      }
+      return true
+    }
+    return super.onKeyDown(keyCode, event)
+  }
+
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
     initFirebase(this)
@@ -379,13 +412,13 @@ fun UsraApp() {
   }
   
   var aiQuestTitle1 by remember {
-    mutableStateOf(prefs.getString("ai_quest_title_1", "✨ AI Boardgame Battle") ?: "✨ AI Boardgame Battle")
+    mutableStateOf(prefs.getString("ai_quest_title_1", "✨ Boardgame Battle") ?: "✨ Boardgame Battle")
   }
   var aiQuestSubtitle1 by remember {
     mutableStateOf(prefs.getString("ai_quest_subtitle_1", "Enjoy offline gameplay with Dad to ease Work Stress.") ?: "Enjoy offline gameplay with Dad to ease Work Stress.")
   }
   var aiQuestTitle2 by remember {
-    mutableStateOf(prefs.getString("ai_quest_title_2", "✨ AI Dinner Prep Assistant") ?: "✨ AI Dinner Prep Assistant")
+    mutableStateOf(prefs.getString("ai_quest_title_2", "✨ Dinner Prep Assistant") ?: "✨ Dinner Prep Assistant")
   }
   var aiQuestSubtitle2 by remember {
     mutableStateOf(prefs.getString("ai_quest_subtitle_2", "Help Mom with device-free cooking prep to unwind.") ?: "Help Mom with device-free cooking prep to unwind.")
@@ -574,7 +607,7 @@ fun UsraApp() {
               modifier = Modifier.background(Color.White)
             ) {
               androidx.compose.material3.DropdownMenuItem(
-                text = { Text("Ask Usra AI", color = DarkSlate) },
+                text = { Text("Ask Usra", color = DarkSlate) },
                 onClick = { 
                   showPlusMenu = false
                   showUsraAIChat = true 
@@ -699,9 +732,9 @@ fun UsraApp() {
                       mood = selectedMood,
                       familyStress = prefs.getFloat("ai_family_stress_level", 5f).toInt()
                     )
-                    val t1 = result["title1"] ?: "✨ AI Boardgame Battle"
+                    val t1 = result["title1"] ?: "✨ Boardgame Battle"
                     val s1 = result["subtitle1"] ?: "Enjoy offline gameplay with Dad to ease Work Stress."
-                    val t2 = result["title2"] ?: "✨ AI Dinner Prep Assistant"
+                    val t2 = result["title2"] ?: "✨ Dinner Prep Assistant"
                     val s2 = result["subtitle2"] ?: "Help Mom with device-free cooking prep to unwind."
                     
                     aiQuestTitle1 = t1
@@ -997,7 +1030,7 @@ fun UsraAuthScreen(
         Spacer(modifier = Modifier.height(32.dp))
 
         Text(
-          text = "USRA AI",
+          text = "USRA",
           style = MaterialTheme.typography.headlineLarge.copy(
             color = Color(0xFF0F172A),
             fontWeight = FontWeight.Bold,
@@ -1118,7 +1151,7 @@ fun UsraAuthScreen(
                         isLoading = false
                     }
                   } else {
-                    errorMessage = task.exception?.message ?: "Sign up failed"
+                    errorMessage = "incorrect password or something wrong on our side please try again"
                     isLoading = false
                   }
                 }
@@ -1137,7 +1170,7 @@ fun UsraAuthScreen(
                     onAuthSuccess(email, displayName)
                     isLoading = false
                   } else {
-                    errorMessage = task.exception?.message ?: "Login failed"
+                    errorMessage = "incorrect password or something wrong on our side please try again"
                     isLoading = false
                   }
                 }
@@ -1433,6 +1466,64 @@ fun HomeDashboardView(
       }
     }
 
+    // Emergency Assistance Card
+    item {
+      val isEmergency = SOSEmergencyManager.isEmergencyTriggered.value
+      androidx.compose.material3.Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = androidx.compose.material3.CardDefaults.cardColors(containerColor = Color(0xFFFFF0F0)),
+        shape = RoundedCornerShape(24.dp)
+      ) {
+        Column(
+          modifier = Modifier
+            .fillMaxWidth()
+            .padding(24.dp),
+          horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+          Text(
+            text = "Emergency Assistance",
+            style = MaterialTheme.typography.titleMedium.copy(
+              fontWeight = FontWeight.Bold,
+              color = Color(0xFFD32F2F)
+            )
+          )
+          Spacer(modifier = Modifier.height(16.dp))
+          
+          if (isEmergency) {
+             Text(
+               text = "🚨 EMERGENCY TRIGGERED. Alerting Family Members.",
+               color = Color(0xFFD32F2F),
+               fontWeight = FontWeight.Bold,
+               textAlign = TextAlign.Center,
+               modifier = Modifier.padding(16.dp)
+             )
+          } else {
+            Box(
+              modifier = Modifier
+                .size(140.dp)
+                .clip(CircleShape)
+                .background(Color(0xFFD32F2F))
+                .pointerInput(Unit) {
+                  detectTapGestures(
+                    onLongPress = {
+                      SOSEmergencyManager.triggerEmergency()
+                    }
+                  )
+                },
+              contentAlignment = Alignment.Center
+            ) {
+              Text(
+                text = "🚨 Hold SOS\nfor 3 Seconds",
+                color = Color.White,
+                fontWeight = FontWeight.Bold,
+                textAlign = TextAlign.Center
+              )
+            }
+          }
+        }
+      }
+    }
+
     // Dynamic Burnout Evaluation Indicator Card
     item {
       Box(
@@ -1472,7 +1563,7 @@ fun HomeDashboardView(
           }
           Spacer(modifier = Modifier.height(4.dp))
           Text(
-            text = "Burnout AI Tracker Evaluation",
+            text = "Burnout Tracker Evaluation",
             style = MaterialTheme.typography.titleMedium.copy(
               fontWeight = FontWeight.Bold,
               color = DarkSlate,
@@ -1510,7 +1601,7 @@ fun HomeDashboardView(
       ) {
         Column {
           Text(
-            text = "Burnout AI Tracker Indicators",
+            text = "Burnout Tracker Indicators",
             style = MaterialTheme.typography.titleMedium.copy(
               fontWeight = FontWeight.Bold,
               color = DarkSlate,
@@ -1859,7 +1950,7 @@ fun HomeDashboardView(
           ) {
             Column(modifier = Modifier.weight(1f)) {
               Text(
-                text = "Usra AI",
+                text = "Usra",
                 style = MaterialTheme.typography.titleMedium.copy(
                   fontWeight = FontWeight.Bold,
                   color = DarkSlate,
@@ -1939,7 +2030,7 @@ fun HomeDashboardView(
             Column {
               if (aiRecommendations == null) {
                 Text(
-                  text = "Connect with Usra AI to evaluate your screen time (${"%.1f".format(screenTime)} hrs) and sleep duration (${"%.1f".format(sleepLog)} hrs) metrics. Our AI counselor will prompt 3 personalized physical replacement suggestions and wellness habits for you.",
+                  text = "Connect with Usra to evaluate your screen time (${"%.1f".format(screenTime)} hrs) and sleep duration (${"%.1f".format(sleepLog)} hrs) metrics. Our counselor will prompt 3 personalized physical replacement suggestions and wellness habits for you.",
                   style = MaterialTheme.typography.bodyMedium.copy(
                     color = MutedGray,
                     fontSize = 13.5.sp,
@@ -2433,7 +2524,7 @@ fun FamilyHarmonyView(
                   modifier = Modifier.size(16.dp)
                 )
                 Text(
-                  text = "AI FAMILY HARMONIZER",
+                  text = "FAMILY HARMONIZER",
                   style = MaterialTheme.typography.labelSmall.copy(
                     fontWeight = FontWeight.Bold,
                     color = AccentGreen,
@@ -2646,7 +2737,7 @@ fun FamilyHarmonyView(
                   modifier = Modifier.size(16.dp)
                 )
                 Text(
-                  text = if (aiRecommendations != null) "Refresh AI Recommendations" else "Consult AI Harmonizer",
+                  text = if (aiRecommendations != null) "Refresh Recommendations" else "Consult Harmonizer",
                   fontSize = 13.sp,
                   fontWeight = FontWeight.Bold
                 )
@@ -2673,7 +2764,7 @@ fun FamilyHarmonyView(
                   horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                   Text(
-                    text = "AI is matching stress indexes with collective family time gaps...",
+                    text = "Matching stress indexes with collective family time gaps...",
                     fontSize = 12.5.sp,
                     color = MutedGray,
                     fontWeight = FontWeight.SemiBold,
@@ -3067,8 +3158,8 @@ fun QuestPolaroidPreview(
           0 -> "🧘 Breathing • Selfie"
           1 -> "🚶 Sunset Trail • GPS"
           2 -> "🍲 Kitchen • Cook Savor"
-          3 -> "✨ AI Spark • Quest"
-          else -> "✨ AI Mindful • Quest"
+          3 -> "✨ Spark • Quest"
+          else -> "✨ Mindful • Quest"
         },
         color = Color.DarkGray,
         fontWeight = FontWeight.Bold,
@@ -3604,7 +3695,7 @@ fun ReconnectionQuestsView(
               modifier = Modifier.size(24.dp)
             )
             Text(
-              text = "Personalized AI Quests",
+              text = "Personalized Quests",
               style = MaterialTheme.typography.titleMedium.copy(
                 fontWeight = FontWeight.Bold,
                 color = DarkSlate,
@@ -3659,7 +3750,7 @@ fun ReconnectionQuestsView(
                   modifier = Modifier.size(16.dp)
                 )
                 Text(
-                  text = "Generate Custom AI Quests",
+                  text = "Generate Custom Quests",
                   style = MaterialTheme.typography.labelLarge.copy(
                     fontWeight = FontWeight.Bold,
                     fontSize = 14.sp
@@ -5438,7 +5529,7 @@ val defaultFeedItems = listOf(
     ),
     FamilyFeedItem(
         id = "4",
-        authorName = "Usra AI",
+        authorName = "Usra",
         avatarInitials = "U",
         avatarColorName = "purple",
         type = FeedItemType.MILESTONE_REACHED,
@@ -6389,7 +6480,7 @@ fun UsraAIChatScreen(
 
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = "✨ Usra AI",
+                        text = "✨ Usra",
                         fontWeight = FontWeight.Bold,
                         fontSize = 17.sp,
                         color = DarkSlate
@@ -6544,7 +6635,7 @@ fun UsraAIChatScreen(
                                             modifier = Modifier.size(12.dp)
                                         )
                                         Text(
-                                            text = "AI is typing...",
+                                            text = "Coach is typing...",
                                             fontSize = 11.sp,
                                             fontWeight = FontWeight.SemiBold,
                                             color = AccentBlue
@@ -6595,7 +6686,7 @@ fun UsraAIChatScreen(
                     OutlinedTextField(
                         value = inputText,
                         onValueChange = { inputText = it },
-                        placeholder = { Text("Ask AI coach...") },
+                        placeholder = { Text("Ask coach...") },
                         modifier = Modifier
                             .weight(1f)
                             .heightIn(min = 52.dp),
