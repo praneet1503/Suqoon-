@@ -73,6 +73,8 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import android.util.Log
 
 fun initFirebase(context: Context) {
@@ -392,6 +394,7 @@ fun UsraApp() {
   var showAccountPage by rememberSaveable { mutableStateOf(false) }
   var showPlusMenu by remember { mutableStateOf(false) }
   var showUsraAIChat by rememberSaveable { mutableStateOf(false) }
+  var showWatchDataPage by rememberSaveable { mutableStateOf(false) }
   var screenTimeGoal by remember { 
     mutableStateOf(prefs.getFloat("screen_time_goal", 6.0f)) 
   }
@@ -538,24 +541,55 @@ fun UsraApp() {
             modifier = Modifier
               .align(Alignment.BottomCenter)
               .offset(y = (-28).dp)
-              .size(56.dp)
-              .clip(CircleShape)
-              .background(
-                brush = androidx.compose.ui.graphics.Brush.linearGradient(
-                  colors = listOf(AccentBlue, Color(0xFF7C3AED))
-                )
-              )
-              .clickable {
-                showUsraAIChat = true
-              },
-            contentAlignment = Alignment.Center
           ) {
-            Icon(
-              imageVector = Icons.Default.Add,
-              contentDescription = "Open Usra AI",
-              tint = Color.White,
-              modifier = Modifier.size(28.dp)
-            )
+            Box(
+              modifier = Modifier
+                .size(56.dp)
+                .clip(CircleShape)
+                .background(
+                  brush = androidx.compose.ui.graphics.Brush.linearGradient(
+                    colors = listOf(AccentBlue, Color(0xFF7C3AED))
+                  )
+                )
+                .clickable {
+                  showPlusMenu = true
+                },
+              contentAlignment = Alignment.Center
+            ) {
+              Icon(
+                imageVector = Icons.Default.Add,
+                contentDescription = "Open Add Menu",
+                tint = Color.White,
+                modifier = Modifier.size(28.dp)
+              )
+            }
+            
+            androidx.compose.material3.DropdownMenu(
+              expanded = showPlusMenu,
+              onDismissRequest = { showPlusMenu = false },
+              modifier = Modifier.background(Color.White)
+            ) {
+              androidx.compose.material3.DropdownMenuItem(
+                text = { Text("Ask Usra AI", color = DarkSlate) },
+                onClick = { 
+                  showPlusMenu = false
+                  showUsraAIChat = true 
+                },
+                leadingIcon = {
+                  Icon(Icons.Default.Chat, contentDescription = null, tint = AccentBlue)
+                }
+              )
+              androidx.compose.material3.DropdownMenuItem(
+                text = { Text("Watch Data", color = DarkSlate) },
+                onClick = {
+                  showPlusMenu = false
+                  showWatchDataPage = true
+                },
+                leadingIcon = {
+                  Icon(Icons.Default.Watch, contentDescription = null, tint = AccentGreen)
+                }
+              )
+            }
           }
         }
       },
@@ -752,6 +786,15 @@ fun UsraApp() {
           screenTimeGoal = 6.0f
           showAccountPage = false
         },
+        onLogOut = {
+          prefs.edit()
+            .putBoolean("is_authenticated", false)
+            .remove("auth_user_email")
+            .remove("user_name")
+            .apply()
+          isUserAuthenticated = false
+          showAccountPage = false
+        },
         onClose = { showAccountPage = false }
       )
     }
@@ -770,6 +813,18 @@ fun UsraApp() {
         sleepLog = sleepLog,
         onSleepLogChange = { sleepLog = it },
         onClose = { showUsraAIChat = false }
+      )
+    }
+
+    // Full screen Slide Up Watch Data Overlay
+    AnimatedVisibility(
+      visible = showWatchDataPage,
+      enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
+      exit = slideOutVertically(targetOffsetY = { it }) + fadeOut(),
+      modifier = Modifier.fillMaxSize()
+    ) {
+      HealthTrackerDashboard(
+        onClose = { showWatchDataPage = false }
       )
     }
 
@@ -874,13 +929,6 @@ fun UsraAuthScreen(
 ) {
   val context = LocalContext.current
   val prefs = remember { context.getSharedPreferences("usra_prefs", Context.MODE_PRIVATE) }
-  var isSignUp by remember { mutableStateOf(false) }
-
-  var email by remember { mutableStateOf("") }
-  var name by remember { mutableStateOf("") }
-  var password by remember { mutableStateOf("") }
-  var passwordVisible by remember { mutableStateOf(false) }
-
   var isLoading by remember { mutableStateOf(false) }
   var errorMessage by remember { mutableStateOf<String?>(null) }
   var successMessage by remember { mutableStateOf<String?>(null) }
@@ -888,34 +936,9 @@ fun UsraAuthScreen(
   Box(
     modifier = Modifier
       .fillMaxSize()
-      .background(
-        brush = Brush.verticalGradient(
-          colors = listOf(
-            Color(0xFF0F172A),
-            Color(0xFF1E293B)
-          )
-        )
-      )
+      .background(Color.White)
       .safeDrawingPadding()
   ) {
-    val isConfigured = BuildConfig.FIREBASE_API_KEY.isNotEmpty() && !BuildConfig.FIREBASE_API_KEY.startsWith("AIzaSyFakeKey")
-    Box(
-      modifier = Modifier
-        .align(Alignment.TopEnd)
-        .padding(16.dp)
-        .background(
-          color = if (isConfigured) Color(0x224ADE80) else Color(0x22FDBA74),
-          shape = RoundedCornerShape(12.dp)
-        )
-        .padding(horizontal = 8.dp, vertical = 4.dp)
-    ) {
-      Text(
-        text = if (isConfigured) "☁️ Firebase Online" else "⚙️ Local Prototype Mode",
-        color = if (isConfigured) Color(0xFF4ADE80) else Color(0xFFFDBA74),
-        style = MaterialTheme.typography.labelSmall
-      )
-    }
-
     LazyColumn(
       modifier = Modifier
         .fillMaxSize()
@@ -926,153 +949,26 @@ fun UsraAuthScreen(
       item {
         Spacer(modifier = Modifier.height(32.dp))
 
-        Image(
-          painter = painterResource(id = R.drawable.img_usra_logo),
-          contentDescription = "Usra AI Logo",
-          modifier = Modifier
-            .size(130.dp)
-            .shadow(16.dp, shape = RoundedCornerShape(28.dp))
-            .background(Color(0xFF1E293B), shape = RoundedCornerShape(28.dp))
-            .border(2.dp, Brush.linearGradient(listOf(Color(0xFF14B8A6), Color(0xFFF43F5E))), shape = RoundedCornerShape(28.dp))
-            .padding(8.dp),
-          contentScale = ContentScale.Crop
-        )
-
-        Spacer(modifier = Modifier.height(20.dp))
-
         Text(
           text = "USRA AI",
           style = MaterialTheme.typography.headlineLarge.copy(
-            color = Color.White,
+            color = Color(0xFF0F172A),
             fontWeight = FontWeight.Bold,
             letterSpacing = 2.sp
           )
         )
 
-        Spacer(modifier = Modifier.height(6.dp))
+        Spacer(modifier = Modifier.height(8.dp))
 
         Text(
           text = "Mindful Screen Balance & Family Harmony",
           style = MaterialTheme.typography.bodyMedium.copy(
-            color = Color(0xFF94A3B8),
+            color = Color(0xFF64748B),
             textAlign = TextAlign.Center
           )
         )
 
-        Spacer(modifier = Modifier.height(28.dp))
-
-        Row(
-          modifier = Modifier
-            .fillMaxWidth()
-            .background(Color(0xFF0F172A), shape = RoundedCornerShape(16.dp))
-            .padding(4.dp)
-        ) {
-          Box(
-            modifier = Modifier
-              .weight(1f)
-              .background(
-                color = if (!isSignUp) Color(0xFF1E293B) else Color.Transparent,
-                shape = RoundedCornerShape(12.dp)
-              )
-              .clickable { isSignUp = false }
-              .padding(vertical = 12.dp),
-            contentAlignment = Alignment.Center
-          ) {
-            Text(
-              text = "Log In",
-              color = if (!isSignUp) Color.White else Color(0xFF94A3B8),
-              fontWeight = FontWeight.Bold,
-              style = MaterialTheme.typography.bodyMedium
-            )
-          }
-          Box(
-            modifier = Modifier
-              .weight(1f)
-              .background(
-                color = if (isSignUp) Color(0xFF1E293B) else Color.Transparent,
-                shape = RoundedCornerShape(12.dp)
-              )
-              .clickable { isSignUp = true }
-              .padding(vertical = 12.dp),
-            contentAlignment = Alignment.Center
-          ) {
-            Text(
-              text = "Create Account",
-              color = if (isSignUp) Color.White else Color(0xFF94A3B8),
-              fontWeight = FontWeight.Bold,
-              style = MaterialTheme.typography.bodyMedium
-            )
-          }
-        }
-
-        Spacer(modifier = Modifier.height(20.dp))
-
-        Column(
-          modifier = Modifier
-            .fillMaxWidth()
-            .background(Color(0xFF1E293B), shape = RoundedCornerShape(20.dp))
-            .padding(20.dp),
-          verticalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
-          if (isSignUp) {
-            OutlinedTextField(
-              value = name,
-              onValueChange = { name = it },
-              label = { Text("Display Name", color = Color(0xFF94A3B8)) },
-              leadingIcon = { Icon(Icons.Default.Person, contentDescription = null, tint = Color(0xFF14B8A6)) },
-              singleLine = true,
-              colors = OutlinedTextFieldDefaults.colors(
-                focusedBorderColor = Color(0xFF14B8A6),
-                unfocusedBorderColor = Color(0xFF475569),
-                focusedTextColor = Color.White,
-                unfocusedTextColor = Color.White
-              ),
-              modifier = Modifier.fillMaxWidth()
-            )
-          }
-
-          OutlinedTextField(
-            value = email,
-            onValueChange = { email = it },
-            label = { Text("Email Address", color = Color(0xFF94A3B8)) },
-            leadingIcon = { Icon(Icons.Default.Email, contentDescription = null, tint = Color(0xFF14B8A6)) },
-            singleLine = true,
-            colors = OutlinedTextFieldDefaults.colors(
-              focusedBorderColor = Color(0xFF14B8A6),
-              unfocusedBorderColor = Color(0xFF475569),
-              focusedTextColor = Color.White,
-              unfocusedTextColor = Color.White
-            ),
-            modifier = Modifier.fillMaxWidth()
-          )
-
-          OutlinedTextField(
-            value = password,
-            onValueChange = { password = it },
-            label = { Text("Password", color = Color(0xFF94A3B8)) },
-            leadingIcon = { Icon(Icons.Default.Lock, contentDescription = null, tint = Color(0xFF14B8A6)) },
-            trailingIcon = {
-              IconButton(onClick = { passwordVisible = !passwordVisible }) {
-                Icon(
-                  imageVector = if (passwordVisible) Icons.Default.Visibility else Icons.Default.VisibilityOff,
-                  contentDescription = "Toggle password visibility",
-                  tint = Color(0xFF94A3B8)
-                )
-              }
-            },
-            visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
-            singleLine = true,
-            colors = OutlinedTextFieldDefaults.colors(
-              focusedBorderColor = Color(0xFF14B8A6),
-              unfocusedBorderColor = Color(0xFF475569),
-              focusedTextColor = Color.White,
-              unfocusedTextColor = Color.White
-            ),
-            modifier = Modifier.fillMaxWidth()
-          )
-        }
-
-        Spacer(modifier = Modifier.height(20.dp))
+        Spacer(modifier = Modifier.height(48.dp))
 
         errorMessage?.let { msg ->
           Text(
@@ -1098,104 +994,23 @@ fun UsraAuthScreen(
 
         Button(
           onClick = {
-            if (email.isBlank() || password.isBlank() || (isSignUp && name.isBlank())) {
-              errorMessage = "Please fill in all fields"
-              return@Button
-            }
             isLoading = true
             errorMessage = null
             successMessage = null
-
-            val auth = try { FirebaseAuth.getInstance() } catch (e: Exception) { null }
-            if (auth == null || !isConfigured) {
-              isLoading = false
-              val finalName = if (isSignUp) name.trim() else "Sami"
-              successMessage = "🔑 Running in Local Demo Mode! Welcome, $finalName."
-              prefs.edit()
-                .putBoolean("is_authenticated", true)
-                .putString("auth_user_email", email.trim())
-                .putString("user_name", finalName)
-                .apply()
-              onAuthSuccess(email.trim(), finalName)
-            } else {
-              if (isSignUp) {
-                auth.createUserWithEmailAndPassword(email.trim(), password)
-                  .addOnCompleteListener { task ->
-                    if (task.isSuccessful) {
-                      val user = auth.currentUser
-                      val profileUpdates = com.google.firebase.auth.userProfileChangeRequest {
-                        displayName = name.trim()
-                      }
-                      user?.updateProfile(profileUpdates)?.addOnCompleteListener {
-                        isLoading = false
-                        successMessage = "✨ Account created successfully!"
-                        prefs.edit()
-                          .putBoolean("is_authenticated", true)
-                          .putString("auth_user_email", email.trim())
-                          .putString("user_name", name.trim())
-                          .apply()
-                        onAuthSuccess(email.trim(), name.trim())
-                      } ?: run {
-                        isLoading = false
-                        successMessage = "✨ Account created successfully!"
-                        prefs.edit()
-                          .putBoolean("is_authenticated", true)
-                          .putString("auth_user_email", email.trim())
-                          .putString("user_name", name.trim())
-                          .apply()
-                        onAuthSuccess(email.trim(), name.trim())
-                      }
-                    } else {
-                      isLoading = false
-                      val ex = task.exception?.localizedMessage ?: "Sign up failed"
-                      if (ex.contains("api key", ignoreCase = true) || ex.contains("project id", ignoreCase = true) || ex.contains("network", ignoreCase = true)) {
-                        errorMessage = "Firebase is unconfigured/offline. Entering Local Prototype Mode..."
-                        prefs.edit()
-                          .putBoolean("is_authenticated", true)
-                          .putString("auth_user_email", email.trim())
-                          .putString("user_name", name.trim())
-                          .apply()
-                        onAuthSuccess(email.trim(), name.trim())
-                      } else {
-                        errorMessage = "⚠️ $ex"
-                      }
-                    }
-                  }
-              } else {
-                auth.signInWithEmailAndPassword(email.trim(), password)
-                  .addOnCompleteListener { task ->
-                    if (task.isSuccessful) {
-                      val user = auth.currentUser
-                      isLoading = false
-                      val resolvedName = user?.displayName ?: email.substringBefore("@")
-                      successMessage = "👋 Welcome back!"
-                      prefs.edit()
-                        .putBoolean("is_authenticated", true)
-                        .putString("auth_user_email", email.trim())
-                        .putString("user_name", resolvedName)
-                        .apply()
-                      onAuthSuccess(email.trim(), resolvedName)
-                    } else {
-                      isLoading = false
-                      val ex = task.exception?.localizedMessage ?: "Login failed"
-                      if (ex.contains("api key", ignoreCase = true) || ex.contains("project id", ignoreCase = true) || ex.contains("network", ignoreCase = true)) {
-                        errorMessage = "Firebase is unconfigured/offline. Entering Local Prototype Mode..."
-                        prefs.edit()
-                          .putBoolean("is_authenticated", true)
-                          .putString("auth_user_email", email.trim())
-                          .putString("user_name", "Sami")
-                          .apply()
-                        onAuthSuccess(email.trim(), "Sami")
-                      } else {
-                        errorMessage = "⚠️ $ex"
-                      }
-                    }
-                  }
-              }
-            }
+            
+            // Simulating Google Sign-In for demo purposes
+            prefs.edit()
+              .putBoolean("is_authenticated", true)
+              .putString("auth_user_email", "google_user@usra.ai")
+              .putString("user_name", "Google User")
+              .apply()
+              
+            successMessage = "✨ Connected with Google!"
+            onAuthSuccess("google_user@usra.ai", "Google User")
+            isLoading = false
           },
           colors = ButtonDefaults.buttonColors(
-            containerColor = Color(0xFF14B8A6),
+            containerColor = Color(0xFF14B8A6), // Green
             contentColor = Color.White
           ),
           shape = RoundedCornerShape(14.dp),
@@ -1207,41 +1022,14 @@ fun UsraAuthScreen(
           if (isLoading) {
             CircularProgressIndicator(color = Color.White, modifier = Modifier.size(24.dp))
           } else {
+            Icon(Icons.Default.AccountCircle, contentDescription = "Google Icon", tint = Color.White, modifier = Modifier.size(24.dp))
+            Spacer(modifier = Modifier.width(12.dp))
             Text(
-              text = if (isSignUp) "Register Account" else "Log In securely",
-              fontWeight = FontWeight.Bold,
+              text = "Continue with Google",
+              fontWeight = FontWeight.SemiBold,
               style = MaterialTheme.typography.bodyLarge
             )
           }
-        }
-
-        Spacer(modifier = Modifier.height(16.dp))
-
-        OutlinedButton(
-          onClick = {
-            prefs.edit()
-              .putBoolean("is_authenticated", true)
-              .putString("auth_user_email", "demo@usra.ai")
-              .putString("user_name", "Sami")
-              .apply()
-            onAuthSuccess("demo@usra.ai", "Sami")
-          },
-          colors = ButtonDefaults.outlinedButtonColors(
-            contentColor = Color(0xFF94A3B8)
-          ),
-          border = BorderStroke(1.dp, Color(0xFF475569)),
-          shape = RoundedCornerShape(14.dp),
-          modifier = Modifier
-            .fillMaxWidth()
-            .height(50.dp)
-        ) {
-          Icon(Icons.Default.Key, contentDescription = null, modifier = Modifier.size(18.dp))
-          Spacer(modifier = Modifier.width(8.dp))
-          Text(
-            text = "Enter with Local Demo Mode",
-            fontWeight = FontWeight.SemiBold,
-            style = MaterialTheme.typography.bodyMedium
-          )
         }
 
         Spacer(modifier = Modifier.height(48.dp))
@@ -1250,6 +1038,7 @@ fun UsraAuthScreen(
   }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeDashboardView(
   userName: String,
@@ -1382,13 +1171,26 @@ fun HomeDashboardView(
     }
   }
 
-  LazyColumn(
-    modifier = Modifier
-      .fillMaxSize()
-      .padding(horizontal = 20.dp),
-    verticalArrangement = Arrangement.spacedBy(18.dp)
+  var isRefreshing by remember { mutableStateOf(false) }
+
+  PullToRefreshBox(
+    isRefreshing = isRefreshing,
+    onRefresh = {
+      isRefreshing = true
+      scope.launch {
+        kotlinx.coroutines.delay(1200) // Simulating network/data refresh
+        isRefreshing = false
+      }
+    },
+    modifier = Modifier.fillMaxSize()
   ) {
-    // Top Bar Welcome Greeting
+    LazyColumn(
+      modifier = Modifier
+        .fillMaxSize()
+        .padding(horizontal = 20.dp),
+      verticalArrangement = Arrangement.spacedBy(18.dp)
+    ) {
+      // Top Bar Welcome Greeting
     item {
       Spacer(modifier = Modifier.height(16.dp))
       Row(
@@ -1535,42 +1337,6 @@ fun HomeDashboardView(
               fontSize = 12.sp
             )
           )
-          val hasStatsPermission = remember { hasUsageStatsPermission(context) }
-          if (!hasStatsPermission) {
-            Spacer(modifier = Modifier.height(10.dp))
-            Row(
-              modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(12.dp))
-                .background(Color(0xFFFEF3C7))
-                .border(1.dp, Color(0xFFFCD34D), RoundedCornerShape(12.dp))
-                .clickable {
-                  try {
-                    context.startActivity(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS).apply {
-                      addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                    })
-                  } catch (e: Exception) {
-                    e.printStackTrace()
-                  }
-                }
-                .padding(horizontal = 12.dp, vertical = 8.dp),
-              verticalAlignment = Alignment.CenterVertically,
-              horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-              Icon(
-                imageVector = Icons.Default.Info,
-                contentDescription = "Permission Notice",
-                tint = Color(0xFFD97706),
-                modifier = Modifier.size(16.dp)
-              )
-              Text(
-                text = "Tap to connect real device Screen Time in Android Settings.",
-                fontSize = 11.sp,
-                color = Color(0xFFB45309),
-                fontWeight = FontWeight.Medium
-              )
-            }
-          }
           Spacer(modifier = Modifier.height(16.dp))
 
           // Profile Chip Selector Row
@@ -2180,6 +1946,7 @@ fun HomeDashboardView(
       }
       Spacer(modifier = Modifier.height(24.dp))
     }
+  }
   }
 }
 
@@ -4424,6 +4191,7 @@ fun AccountScreen(
   userName: String,
   onUserNameChange: (String) -> Unit,
   onResetApp: () -> Unit,
+  onLogOut: () -> Unit,
   onClose: () -> Unit
 ) {
   var notificationToggled by rememberSaveable { mutableStateOf(true) }
@@ -4736,13 +4504,7 @@ fun AccountScreen(
               verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
               Button(
-                onClick = {
-                  Toast.makeText(
-                    context,
-                    "log out part is incomplete.....in works!!!",
-                    Toast.LENGTH_LONG
-                  ).show()
-                },
+                onClick = onLogOut,
                 colors = ButtonDefaults.buttonColors(
                   containerColor = Color.LightGray.copy(alpha = 0.2f),
                   contentColor = DarkSlate
