@@ -787,6 +787,7 @@ fun UsraApp() {
           showAccountPage = false
         },
         onLogOut = {
+          FirebaseAuth.getInstance().signOut()
           prefs.edit()
             .putBoolean("is_authenticated", false)
             .remove("auth_user_email")
@@ -932,6 +933,11 @@ fun UsraAuthScreen(
   var isLoading by remember { mutableStateOf(false) }
   var errorMessage by remember { mutableStateOf<String?>(null) }
   var successMessage by remember { mutableStateOf<String?>(null) }
+  
+  var email by remember { mutableStateOf("") }
+  var password by remember { mutableStateOf("") }
+  var name by remember { mutableStateOf("") }
+  var isSignUp by remember { mutableStateOf(false) }
 
   Box(
     modifier = Modifier
@@ -992,22 +998,109 @@ fun UsraAuthScreen(
           Spacer(modifier = Modifier.height(12.dp))
         }
 
+        if (isSignUp) {
+          OutlinedTextField(
+            value = name,
+            onValueChange = { name = it },
+            label = { Text("Family Name / Display Name") },
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true,
+            colors = OutlinedTextFieldDefaults.colors(
+              focusedBorderColor = AccentBlue,
+              focusedLabelColor = AccentBlue
+            ),
+            shape = RoundedCornerShape(12.dp)
+          )
+          Spacer(modifier = Modifier.height(16.dp))
+        }
+
+        OutlinedTextField(
+          value = email,
+          onValueChange = { email = it },
+          label = { Text("Email Address") },
+          modifier = Modifier.fillMaxWidth(),
+          singleLine = true,
+          keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Email),
+          colors = OutlinedTextFieldDefaults.colors(
+            focusedBorderColor = AccentBlue,
+            focusedLabelColor = AccentBlue
+          ),
+          shape = RoundedCornerShape(12.dp)
+        )
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        OutlinedTextField(
+          value = password,
+          onValueChange = { password = it },
+          label = { Text("Password") },
+          modifier = Modifier.fillMaxWidth(),
+          singleLine = true,
+          visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
+          keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Password),
+          colors = OutlinedTextFieldDefaults.colors(
+            focusedBorderColor = AccentBlue,
+            focusedLabelColor = AccentBlue
+          ),
+          shape = RoundedCornerShape(12.dp)
+        )
+
+        Spacer(modifier = Modifier.height(32.dp))
+
         Button(
           onClick = {
+            if (email.isBlank() || password.isBlank() || (isSignUp && name.isBlank())) {
+              errorMessage = "Please fill in all fields"
+              return@Button
+            }
             isLoading = true
             errorMessage = null
             successMessage = null
             
-            // Simulating Google Sign-In for demo purposes
-            prefs.edit()
-              .putBoolean("is_authenticated", true)
-              .putString("auth_user_email", "google_user@usra.ai")
-              .putString("user_name", "Google User")
-              .apply()
-              
-            successMessage = "✨ Connected with Google!"
-            onAuthSuccess("google_user@usra.ai", "Google User")
-            isLoading = false
+            val auth = FirebaseAuth.getInstance()
+            if (isSignUp) {
+              auth.createUserWithEmailAndPassword(email, password)
+                .addOnCompleteListener { task ->
+                  if (task.isSuccessful) {
+                    val user = auth.currentUser
+                    val profileUpdates = com.google.firebase.auth.UserProfileChangeRequest.Builder()
+                        .setDisplayName(name)
+                        .build()
+                    user?.updateProfile(profileUpdates)?.addOnCompleteListener {
+                        prefs.edit()
+                          .putBoolean("is_authenticated", true)
+                          .putString("auth_user_email", email)
+                          .putString("user_name", name)
+                          .apply()
+                        successMessage = "✨ Account created!"
+                        onAuthSuccess(email, name)
+                        isLoading = false
+                    }
+                  } else {
+                    errorMessage = task.exception?.message ?: "Sign up failed"
+                    isLoading = false
+                  }
+                }
+            } else {
+              auth.signInWithEmailAndPassword(email, password)
+                .addOnCompleteListener { task ->
+                  if (task.isSuccessful) {
+                    val user = auth.currentUser
+                    val displayName = user?.displayName ?: email.substringBefore("@")
+                    prefs.edit()
+                      .putBoolean("is_authenticated", true)
+                      .putString("auth_user_email", email)
+                      .putString("user_name", displayName)
+                      .apply()
+                    successMessage = "✨ Welcome back!"
+                    onAuthSuccess(email, displayName)
+                    isLoading = false
+                  } else {
+                    errorMessage = task.exception?.message ?: "Login failed"
+                    isLoading = false
+                  }
+                }
+            }
           },
           colors = ButtonDefaults.buttonColors(
             containerColor = Color(0xFF14B8A6), // Green
@@ -1022,14 +1115,27 @@ fun UsraAuthScreen(
           if (isLoading) {
             CircularProgressIndicator(color = Color.White, modifier = Modifier.size(24.dp))
           } else {
-            Icon(Icons.Default.AccountCircle, contentDescription = "Google Icon", tint = Color.White, modifier = Modifier.size(24.dp))
+            Icon(Icons.Default.AccountCircle, contentDescription = "Email Icon", tint = Color.White, modifier = Modifier.size(24.dp))
             Spacer(modifier = Modifier.width(12.dp))
             Text(
-              text = "Continue with Google",
+              text = if (isSignUp) "Create Family Account" else "Sign In",
               fontWeight = FontWeight.SemiBold,
               style = MaterialTheme.typography.bodyLarge
             )
           }
+        }
+        
+        Spacer(modifier = Modifier.height(16.dp))
+        
+        TextButton(
+            onClick = { isSignUp = !isSignUp },
+            enabled = !isLoading
+        ) {
+            Text(
+                text = if (isSignUp) "Already have an account? Sign In" else "New family? Create Account",
+                color = AccentBlue,
+                fontWeight = FontWeight.Medium
+            )
         }
 
         Spacer(modifier = Modifier.height(48.dp))
@@ -4303,6 +4409,13 @@ fun AccountScreen(
                   onClick = {
                     if (nameInput.isNotBlank()) {
                       onUserNameChange(nameInput)
+                      val user = FirebaseAuth.getInstance().currentUser
+                      if (user != null) {
+                        val profileUpdates = com.google.firebase.auth.UserProfileChangeRequest.Builder()
+                          .setDisplayName(nameInput)
+                          .build()
+                        user.updateProfile(profileUpdates)
+                      }
                     }
                     isEditingName = false
                   },
@@ -6127,24 +6240,11 @@ fun UsraAIChatScreen(
     val context = LocalContext.current
     val prefs = remember { context.getSharedPreferences("usra_prefs", Context.MODE_PRIVATE) }
 
-    // State of screen time and sleep metrics for each family member
-    var samiScreenTime by remember { mutableStateOf(screenTime) }
-    var samiSleepLog by remember { mutableStateOf(sleepLog) }
-
-    var momScreenTime by remember { mutableStateOf(prefs.getFloat("mom_screen_time", 4.0f)) }
-    var momSleepLog by remember { mutableStateOf(prefs.getFloat("mom_sleep_log", 7.0f)) }
-
-    var dadScreenTime by remember { mutableStateOf(prefs.getFloat("dad_screen_time", 5.0f)) }
-    var dadSleepLog by remember { mutableStateOf(prefs.getFloat("dad_sleep_log", 6.5f)) }
-
-    var selectedMember by remember { mutableStateOf("Sami (You)") }
-    var showMetricsConfig by remember { mutableStateOf(true) }
-
     var messages by remember {
         mutableStateOf(
             listOf(
                 Pair(
-                    "Hello! I am your family's digital wellness companion. 🌸 Use the profiles above to set specific screen times and sleep goals, then ask me for personalized recommendations or offline activities custom-tailored for any family member!",
+                    "Hello! I am your personal digital wellness companion. 🌸 Ask me for personalized recommendations or offline activities!",
                     false
                 )
             )
@@ -6166,12 +6266,6 @@ fun UsraAIChatScreen(
             textToSpeech.stop()
             textToSpeech.shutdown()
         }
-    }
-
-    // Sync Sami's metrics if they change on the home page
-    LaunchedEffect(screenTime, sleepLog) {
-        samiScreenTime = screenTime
-        samiSleepLog = sleepLog
     }
 
     // Keep the conversation scrolled to the latest message
@@ -6235,246 +6329,6 @@ fun UsraAIChatScreen(
                             color = MutedGray,
                             fontWeight = FontWeight.Medium
                         )
-                    }
-                }
-
-                // Collapsible Toggle Button for variables config
-                TextButton(
-                    onClick = { showMetricsConfig = !showMetricsConfig },
-                    colors = ButtonDefaults.textButtonColors(contentColor = AccentBlue)
-                ) {
-                    Icon(
-                        imageVector = if (showMetricsConfig) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
-                        contentDescription = "Toggle Metrics Config",
-                        modifier = Modifier.size(16.dp)
-                    )
-                    Spacer(modifier = Modifier.width(2.dp))
-                    Text(
-                        text = if (showMetricsConfig) "Hide Profiles" else "Show Profiles",
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-            }
-
-            // Member selection and slider tweaking UI
-            AnimatedVisibility(
-                visible = showMetricsConfig,
-                enter = expandVertically() + fadeIn(),
-                exit = shrinkVertically() + fadeOut()
-            ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(bottom = 6.dp),
-                    verticalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    // Profile Chip Selector Row
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 16.dp)
-                            .horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        listOf(
-                            Triple("Sami (You)", "S", AccentBlue),
-                            Triple("Mom (Working Parent)", "M", AccentGreen),
-                            Triple("Dad (Work Mode)", "D", AmberBurnout)
-                        ).forEach { (memberName, initial, color) ->
-                            val isSelected = selectedMember == memberName
-                            val memberScreen = when (memberName) {
-                                "Sami (You)" -> samiScreenTime
-                                "Mom (Working Parent)" -> momScreenTime
-                                else -> dadScreenTime
-                            }
-                            val memberSleep = when (memberName) {
-                                "Sami (You)" -> samiSleepLog
-                                "Mom (Working Parent)" -> momSleepLog
-                                else -> dadSleepLog
-                            }
-
-                            Card(
-                                colors = CardDefaults.cardColors(
-                                    containerColor = if (isSelected) color.copy(alpha = 0.12f)
-                                                     else Color.White
-                                ),
-                                shape = RoundedCornerShape(12.dp),
-                                modifier = Modifier
-                                    .width(160.dp)
-                                    .clickable { selectedMember = memberName }
-                                    .border(
-                                        width = if (isSelected) 2.dp else 1.dp,
-                                        color = if (isSelected) color else Color(0xFFECEFF3),
-                                        shape = RoundedCornerShape(12.dp)
-                                    )
-                            ) {
-                                Row(
-                                    modifier = Modifier.padding(8.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                ) {
-                                    Box(
-                                        modifier = Modifier
-                                            .size(28.dp)
-                                            .clip(CircleShape)
-                                            .background(color),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Text(
-                                            text = initial,
-                                            color = Color.White,
-                                            fontWeight = FontWeight.Bold,
-                                            fontSize = 13.sp
-                                        )
-                                    }
-                                    Column {
-                                        Text(
-                                            text = memberName.split(" ").first(),
-                                            fontWeight = FontWeight.Bold,
-                                            fontSize = 12.5.sp,
-                                            color = DarkSlate,
-                                            maxLines = 1
-                                        )
-                                        Text(
-                                            text = "${"%.1f".format(memberScreen)}h • ${"%.1f".format(memberSleep)}h sleep",
-                                            fontSize = 9.5.sp,
-                                            color = MutedGray,
-                                            maxLines = 1
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    // Tuning Sliders Card for the active selected profile
-                    Card(
-                        colors = CardDefaults.cardColors(
-                            containerColor = Color.White
-                        ),
-                        shape = RoundedCornerShape(16.dp),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 16.dp)
-                            .border(
-                                width = 1.dp,
-                                color = Color(0xFFECEFF3),
-                                shape = RoundedCornerShape(16.dp)
-                            )
-                    ) {
-                        Column(modifier = Modifier.padding(12.dp)) {
-                            val activeScreenVal = when (selectedMember) {
-                                "Sami (You)" -> samiScreenTime
-                                "Mom (Working Parent)" -> momScreenTime
-                                else -> dadScreenTime
-                            }
-                            val activeSleepVal = when (selectedMember) {
-                                "Sami (You)" -> samiSleepLog
-                                "Mom (Working Parent)" -> momSleepLog
-                                else -> dadSleepLog
-                            }
-
-                            // Sliders header
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(
-                                    text = "🔧 Configure variables for $selectedMember",
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 12.sp,
-                                    color = DarkSlate
-                                )
-                                Box(
-                                    modifier = Modifier
-                                        .clip(RoundedCornerShape(6.dp))
-                                        .background(AccentBlueSoft)
-                                        .padding(horizontal = 6.dp, vertical = 2.dp)
-                                ) {
-                                    Text(
-                                        text = "Active Profile",
-                                        color = AccentBlue,
-                                        fontSize = 9.sp,
-                                        fontWeight = FontWeight.Bold
-                                    )
-                                }
-                            }
-
-                            Spacer(modifier = Modifier.height(8.dp))
-
-                            // Screen Time Slider Row
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text("Daily Screen Time:", fontSize = 11.sp, color = MutedGray)
-                                Text("${"%.1f".format(activeScreenVal)} hrs", fontSize = 11.5.sp, fontWeight = FontWeight.Bold, color = DarkSlate)
-                            }
-                            Slider(
-                                value = activeScreenVal,
-                                onValueChange = { newValue ->
-                                    when (selectedMember) {
-                                        "Sami (You)" -> samiScreenTime = newValue
-                                        "Mom (Working Parent)" -> momScreenTime = newValue
-                                        "Dad (Work Mode)" -> dadScreenTime = newValue
-                                    }
-                                },
-                                onValueChangeFinished = {
-                                    when (selectedMember) {
-                                        "Sami (You)" -> onScreenTimeChange(samiScreenTime)
-                                        "Mom (Working Parent)" -> prefs.edit().putFloat("mom_screen_time", momScreenTime).apply()
-                                        "Dad (Work Mode)" -> prefs.edit().putFloat("dad_screen_time", dadScreenTime).apply()
-                                    }
-                                },
-                                valueRange = 0.5f..12.0f,
-                                colors = SliderDefaults.colors(
-                                    thumbColor = AccentBlue,
-                                    activeTrackColor = AccentBlue,
-                                    inactiveTrackColor = AccentBlueSoft
-                                ),
-                                modifier = Modifier.height(24.dp)
-                            )
-
-                            Spacer(modifier = Modifier.height(4.dp))
-
-                            // Sleep Log Slider Row
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text("Nightly Sleep duration:", fontSize = 11.sp, color = MutedGray)
-                                Text("${"%.1f".format(activeSleepVal)} hrs", fontSize = 11.5.sp, fontWeight = FontWeight.Bold, color = DarkSlate)
-                            }
-                            Slider(
-                                value = activeSleepVal,
-                                onValueChange = { newValue ->
-                                    when (selectedMember) {
-                                        "Sami (You)" -> samiSleepLog = newValue
-                                        "Mom (Working Parent)" -> momSleepLog = newValue
-                                        "Dad (Work Mode)" -> dadSleepLog = newValue
-                                    }
-                                },
-                                onValueChangeFinished = {
-                                    when (selectedMember) {
-                                        "Sami (You)" -> onSleepLogChange(samiSleepLog)
-                                        "Mom (Working Parent)" -> prefs.edit().putFloat("mom_sleep_log", momSleepLog).apply()
-                                        "Dad (Work Mode)" -> prefs.edit().putFloat("dad_sleep_log", dadSleepLog).apply()
-                                    }
-                                },
-                                valueRange = 3.0f..10.0f,
-                                colors = SliderDefaults.colors(
-                                    thumbColor = AccentGreen,
-                                    activeTrackColor = AccentGreen,
-                                    inactiveTrackColor = AccentGreenSoft
-                                ),
-                                modifier = Modifier.height(24.dp)
-                            )
-                        }
                     }
                 }
             }
@@ -6684,27 +6538,13 @@ fun UsraAIChatScreen(
 
                                 coroutineScope.launch {
                                     try {
-                                        val activeScreen = when (selectedMember) {
-                                            "Sami (You)" -> samiScreenTime
-                                            "Mom (Working Parent)" -> momScreenTime
-                                            else -> dadScreenTime
-                                        }
-                                        val activeSleep = when (selectedMember) {
-                                            "Sami (You)" -> samiSleepLog
-                                            "Mom (Working Parent)" -> momSleepLog
-                                            else -> dadSleepLog
-                                        }
-                                        val familyContext = """
-                                            - Sami (You): ${"%.1f".format(samiScreenTime)} hrs screen, ${"%.1f".format(samiSleepLog)} hrs sleep
-                                            - Mom (Working Parent): ${"%.1f".format(momScreenTime)} hrs screen, ${"%.1f".format(momSleepLog)} hrs sleep
-                                            - Dad (Work Mode): ${"%.1f".format(dadScreenTime)} hrs screen, ${"%.1f".format(dadSleepLog)} hrs sleep
-                                        """.trimIndent()
+                                        val familyContext = "- $userName: ${"%.1f".format(screenTime)} hrs screen, ${"%.1f".format(sleepLog)} hrs sleep"
 
                                         val response = GeminiService.getChatResponse(
                                             userName = userName,
-                                            activePersonName = selectedMember,
-                                            activeScreenTime = activeScreen,
-                                            activeSleepHours = activeSleep,
+                                            activePersonName = userName,
+                                            activeScreenTime = screenTime,
+                                            activeSleepHours = sleepLog,
                                             familyContext = familyContext,
                                             messageHistory = messages.drop(1).map { Pair(it.first, it.second) },
                                             latestMessage = userQuery
