@@ -68,6 +68,10 @@ import com.google.firebase.FirebaseOptions
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.SetOptions
 import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.auth.GoogleAuthProvider
+import com.google.android.gms.auth.api.signin.GoogleSignIn
+import com.google.android.gms.auth.api.signin.GoogleSignInOptions
+import com.google.android.gms.common.api.ApiException
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
@@ -939,6 +943,43 @@ fun UsraAuthScreen(
   var name by remember { mutableStateOf("") }
   var isSignUp by remember { mutableStateOf(false) }
 
+  val googleSignInLauncher = rememberLauncherForActivityResult(
+    contract = ActivityResultContracts.StartActivityForResult()
+  ) { result ->
+    val task = GoogleSignIn.getSignedInAccountFromIntent(result.data)
+    try {
+      val account = task.getResult(ApiException::class.java)
+      val idToken = account?.idToken
+      if (idToken != null) {
+        val credential = GoogleAuthProvider.getCredential(idToken, null)
+        FirebaseAuth.getInstance().signInWithCredential(credential)
+          .addOnCompleteListener { authTask ->
+            if (authTask.isSuccessful) {
+              val user = FirebaseAuth.getInstance().currentUser
+              val userEmail = user?.email ?: ""
+              val displayName = user?.displayName ?: "Google User"
+              prefs.edit()
+                .putBoolean("is_authenticated", true)
+                .putString("auth_user_email", userEmail)
+                .putString("user_name", displayName)
+                .apply()
+              successMessage = "✨ Connected with Google!"
+              onAuthSuccess(userEmail, displayName)
+            } else {
+              errorMessage = authTask.exception?.message ?: "Google authentication failed"
+            }
+            isLoading = false
+          }
+      } else {
+        errorMessage = "Google authentication failed (no ID token)"
+        isLoading = false
+      }
+    } catch (e: ApiException) {
+      errorMessage = "Google sign in failed: ${e.message}"
+      isLoading = false
+    }
+  }
+
   Box(
     modifier = Modifier
       .fillMaxSize()
@@ -1136,6 +1177,46 @@ fun UsraAuthScreen(
                 color = AccentBlue,
                 fontWeight = FontWeight.Medium
             )
+        }
+
+        Spacer(modifier = Modifier.height(24.dp))
+
+        Button(
+          onClick = {
+            isLoading = true
+            errorMessage = null
+            successMessage = null
+            
+            val gso = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
+                .requestIdToken(BuildConfig.FIREBASE_WEB_CLIENT_ID.ifEmpty { "1064095450410-fake-client-id.apps.googleusercontent.com" })
+                .requestEmail()
+                .build()
+            val googleSignInClient = GoogleSignIn.getClient(context, gso)
+            googleSignInLauncher.launch(googleSignInClient.signInIntent)
+          },
+          colors = ButtonDefaults.buttonColors(
+            containerColor = Color(0xFFE2E8F0), // Light Gray
+            contentColor = Color(0xFF1E293B)
+          ),
+          shape = RoundedCornerShape(14.dp),
+          modifier = Modifier
+            .fillMaxWidth()
+            .height(54.dp),
+          enabled = !isLoading
+        ) {
+          if (!isLoading) {
+            Icon(
+              imageVector = Icons.Default.AccountCircle, // Placeholder for Google icon
+              contentDescription = "Google Icon",
+              modifier = Modifier.size(24.dp)
+            )
+            Spacer(modifier = Modifier.width(12.dp))
+            Text(
+              text = "Continue with Google",
+              fontWeight = FontWeight.SemiBold,
+              style = MaterialTheme.typography.bodyLarge
+            )
+          }
         }
 
         Spacer(modifier = Modifier.height(48.dp))
