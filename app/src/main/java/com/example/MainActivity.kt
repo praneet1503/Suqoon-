@@ -160,15 +160,6 @@ fun UsraApp() {
       if (deviceTime > 0f) {
           screenTime = deviceTime
       }
-    } else {
-      // If we don't have permission, open settings
-      try {
-          context.startActivity(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS).apply {
-              addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-          })
-      } catch (e: Exception) {
-          e.printStackTrace()
-      }
     }
   }
 
@@ -950,7 +941,7 @@ fun HomeDashboardView(
       ) {
         Column {
           Text(
-            text = "Burnout AI Tracker Sliders",
+            text = "Burnout AI Tracker Indicators",
             style = MaterialTheme.typography.titleMedium.copy(
               fontWeight = FontWeight.Bold,
               color = DarkSlate,
@@ -958,12 +949,48 @@ fun HomeDashboardView(
             )
           )
           Text(
-            text = "Simulate values to recalculate risk indicators instantly",
+            text = "Real-time wellness and usage indicators synced from your device",
             style = MaterialTheme.typography.bodySmall.copy(
               color = MutedGray,
               fontSize = 12.sp
             )
           )
+          val hasStatsPermission = remember { hasUsageStatsPermission(context) }
+          if (!hasStatsPermission) {
+            Spacer(modifier = Modifier.height(10.dp))
+            Row(
+              modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(12.dp))
+                .background(Color(0xFFFEF3C7))
+                .border(1.dp, Color(0xFFFCD34D), RoundedCornerShape(12.dp))
+                .clickable {
+                  try {
+                    context.startActivity(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS).apply {
+                      addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    })
+                  } catch (e: Exception) {
+                    e.printStackTrace()
+                  }
+                }
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+              verticalAlignment = Alignment.CenterVertically,
+              horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+              Icon(
+                imageVector = Icons.Default.Info,
+                contentDescription = "Permission Notice",
+                tint = Color(0xFFD97706),
+                modifier = Modifier.size(16.dp)
+              )
+              Text(
+                text = "Tap to connect real device Screen Time in Android Settings.",
+                fontSize = 11.sp,
+                color = Color(0xFFB45309),
+                fontWeight = FontWeight.Medium
+              )
+            }
+          }
           Spacer(modifier = Modifier.height(16.dp))
 
           // Profile Chip Selector Row
@@ -1046,7 +1073,7 @@ fun HomeDashboardView(
 
           Spacer(modifier = Modifier.height(16.dp))
 
-          // Screen Time Slider Layout
+          // Screen Time Progress Indicator
           Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -1075,33 +1102,27 @@ fun HomeDashboardView(
               )
             )
           }
-          Slider(
-            value = activeScreenVal,
-            onValueChange = { newValue ->
-              when (selectedMember) {
-                "Sami (You)" -> onScreenTimeChange(newValue)
-                "Mom (Working Parent)" -> {
-                  momScreenTime = newValue
-                  prefs.edit().putFloat("mom_screen_time", newValue).apply()
-                }
-                "Dad (Work Mode)" -> {
-                  dadScreenTime = newValue
-                  prefs.edit().putFloat("dad_screen_time", newValue).apply()
-                }
-              }
-            },
-            valueRange = 0.5f..12f,
-            colors = SliderDefaults.colors(
-              thumbColor = AccentBlue,
-              activeTrackColor = AccentBlue,
-              inactiveTrackColor = AccentBlueSoft
-            ),
-            modifier = Modifier.height(24.dp).testTag("screen_time_slider")
-          )
+          Spacer(modifier = Modifier.height(6.dp))
+          Box(
+            modifier = Modifier
+              .fillMaxWidth()
+              .height(12.dp)
+              .clip(RoundedCornerShape(6.dp))
+              .background(AccentBlueSoft)
+              .testTag("screen_time_progress_bar")
+          ) {
+            val fraction = (activeScreenVal / 12f).coerceIn(0f, 1f)
+            Box(
+              modifier = Modifier
+                .fillMaxWidth(fraction)
+                .fillMaxHeight()
+                .background(AccentBlue)
+            )
+          }
 
-          Spacer(modifier = Modifier.height(12.dp))
+          Spacer(modifier = Modifier.height(16.dp))
 
-          // Sleep Log Slider Layout
+          // Sleep Log Progress Indicator
           Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -1130,29 +1151,23 @@ fun HomeDashboardView(
               )
             )
           }
-          Slider(
-            value = activeSleepVal,
-            onValueChange = { newValue ->
-              when (selectedMember) {
-                "Sami (You)" -> onSleepLogChange(newValue)
-                "Mom (Working Parent)" -> {
-                  momSleepLog = newValue
-                  prefs.edit().putFloat("mom_sleep_log", newValue).apply()
-                }
-                "Dad (Work Mode)" -> {
-                  dadSleepLog = newValue
-                  prefs.edit().putFloat("dad_sleep_log", newValue).apply()
-                }
-              }
-            },
-            valueRange = 3f..10f,
-            colors = SliderDefaults.colors(
-              thumbColor = AccentGreen,
-              activeTrackColor = AccentGreen,
-              inactiveTrackColor = AccentGreenSoft
-            ),
-            modifier = Modifier.height(24.dp).testTag("sleep_log_slider")
-          )
+          Spacer(modifier = Modifier.height(6.dp))
+          Box(
+            modifier = Modifier
+              .fillMaxWidth()
+              .height(12.dp)
+              .clip(RoundedCornerShape(6.dp))
+              .background(AccentGreenSoft)
+              .testTag("sleep_log_progress_bar")
+          ) {
+            val fraction = (activeSleepVal / 10f).coerceIn(0f, 1f)
+            Box(
+              modifier = Modifier
+                .fillMaxWidth(fraction)
+                .fillMaxHeight()
+                .background(AccentGreen)
+            )
+          }
         }
       }
     }
@@ -1910,7 +1925,9 @@ fun FamilyHarmonyView(
             value = stressLevel,
             onValueChange = {
               stressLevel = it
-              prefs.edit().putFloat("ai_family_stress_level", it).apply()
+            },
+            onValueChangeFinished = {
+              prefs.edit().putFloat("ai_family_stress_level", stressLevel).apply()
             },
             valueRange = 1f..10f,
             steps = 8,
@@ -3569,6 +3586,153 @@ fun WeeklyTrendsChartCard(
             modifier = Modifier
               .clip(RoundedCornerShape(4.dp))
               .clickable { selectedIndex = i }
+          )
+        }
+      }
+
+      Spacer(modifier = Modifier.height(20.dp))
+      HorizontalDivider(color = Color(0xFFF1F5F9), thickness = 1.dp)
+      Spacer(modifier = Modifier.height(16.dp))
+
+      // Weekly Wellness Score & Goal Tracker Section
+      val averageBurnoutRisk = storedWeeklyScores.average().toFloat()
+      val actualWellnessScore = (100f - averageBurnoutRisk).coerceIn(0f, 100f)
+      var targetWellnessScore by remember { mutableStateOf(prefs.getFloat("target_wellness_score", 80f)) }
+
+      Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+      ) {
+        Column {
+          Text(
+            text = "🎯 Weekly Wellness Goal",
+            style = MaterialTheme.typography.titleSmall.copy(
+              fontWeight = FontWeight.Bold,
+              color = DarkSlate,
+              fontSize = 14.sp
+            )
+          )
+          Text(
+            text = "Keep daily screen use low & sleep high to boost score",
+            style = MaterialTheme.typography.bodySmall.copy(
+              color = MutedGray,
+              fontSize = 11.sp
+            )
+          )
+        }
+        
+        Row(
+          verticalAlignment = Alignment.CenterVertically,
+          horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+          IconButton(
+            onClick = {
+              targetWellnessScore = (targetWellnessScore - 5f).coerceIn(50f, 95f)
+              prefs.edit().putFloat("target_wellness_score", targetWellnessScore).apply()
+            },
+            modifier = Modifier.size(36.dp)
+          ) {
+            Box(
+              modifier = Modifier
+                .fillMaxSize()
+                .clip(CircleShape)
+                .background(Color(0xFFF1F5F9)),
+              contentAlignment = Alignment.Center
+            ) {
+              Text("-", fontWeight = FontWeight.Bold, color = DarkSlate, fontSize = 16.sp)
+            }
+          }
+          
+          Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(
+              text = "Target",
+              style = MaterialTheme.typography.labelSmall.copy(color = MutedGray, fontSize = 10.sp)
+            )
+            Text(
+              text = "${targetWellnessScore.toInt()}%",
+              style = MaterialTheme.typography.bodyMedium.copy(
+                fontWeight = FontWeight.Bold,
+                color = AccentBlue,
+                fontSize = 14.sp
+              )
+            )
+          }
+
+          IconButton(
+            onClick = {
+              targetWellnessScore = (targetWellnessScore + 5f).coerceIn(50f, 95f)
+              prefs.edit().putFloat("target_wellness_score", targetWellnessScore).apply()
+            },
+            modifier = Modifier.size(36.dp)
+          ) {
+            Box(
+              modifier = Modifier
+                .fillMaxSize()
+                .clip(CircleShape)
+                .background(Color(0xFFF1F5F9)),
+              contentAlignment = Alignment.Center
+            ) {
+              Text("+", fontWeight = FontWeight.Bold, color = DarkSlate, fontSize = 16.sp)
+            }
+          }
+        }
+      }
+
+      Spacer(modifier = Modifier.height(14.dp))
+
+      val progressFraction = if (targetWellnessScore > 0f) (actualWellnessScore / targetWellnessScore).coerceIn(0f, 1f) else 1f
+      val progressPct = (progressFraction * 100).toInt()
+
+      Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Row(
+          modifier = Modifier.fillMaxWidth(),
+          horizontalArrangement = Arrangement.SpaceBetween,
+          verticalAlignment = Alignment.CenterVertically
+        ) {
+          Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp)
+          ) {
+            Text(
+              text = "Current: ${actualWellnessScore.toInt()}%",
+              style = MaterialTheme.typography.bodySmall.copy(
+                fontWeight = FontWeight.Bold,
+                color = DarkSlate,
+                fontSize = 12.sp
+              )
+            )
+            if (actualWellnessScore >= targetWellnessScore) {
+              Text("🏆 Goal Reached!", fontSize = 11.sp, color = AccentGreen, fontWeight = FontWeight.Bold)
+            }
+          }
+          Text(
+            text = "$progressPct% of Goal achieved",
+            style = MaterialTheme.typography.bodySmall.copy(
+              fontWeight = FontWeight.SemiBold,
+              color = if (actualWellnessScore >= targetWellnessScore) AccentGreen else AccentBlue,
+              fontSize = 12.sp
+            )
+          )
+        }
+
+        Box(
+          modifier = Modifier
+            .fillMaxWidth()
+            .height(14.dp)
+            .clip(RoundedCornerShape(7.dp))
+            .background(Color(0xFFF1F5F9))
+            .testTag("wellness_score_progress_bar")
+        ) {
+          Box(
+            modifier = Modifier
+              .fillMaxWidth(progressFraction)
+              .fillMaxHeight()
+              .background(
+                Brush.horizontalGradient(
+                  colors = listOf(AccentBlue, AccentGreen)
+                )
+              )
           )
         }
       }
@@ -5814,18 +5978,16 @@ fun UsraAIChatScreen(
                                 value = activeScreenVal,
                                 onValueChange = { newValue ->
                                     when (selectedMember) {
-                                        "Sami (You)" -> {
-                                            samiScreenTime = newValue
-                                            onScreenTimeChange(newValue)
-                                        }
-                                        "Mom (Working Parent)" -> {
-                                            momScreenTime = newValue
-                                            prefs.edit().putFloat("mom_screen_time", newValue).apply()
-                                        }
-                                        "Dad (Work Mode)" -> {
-                                            dadScreenTime = newValue
-                                            prefs.edit().putFloat("dad_screen_time", newValue).apply()
-                                        }
+                                        "Sami (You)" -> samiScreenTime = newValue
+                                        "Mom (Working Parent)" -> momScreenTime = newValue
+                                        "Dad (Work Mode)" -> dadScreenTime = newValue
+                                    }
+                                },
+                                onValueChangeFinished = {
+                                    when (selectedMember) {
+                                        "Sami (You)" -> onScreenTimeChange(samiScreenTime)
+                                        "Mom (Working Parent)" -> prefs.edit().putFloat("mom_screen_time", momScreenTime).apply()
+                                        "Dad (Work Mode)" -> prefs.edit().putFloat("dad_screen_time", dadScreenTime).apply()
                                     }
                                 },
                                 valueRange = 0.5f..12.0f,
@@ -5852,18 +6014,16 @@ fun UsraAIChatScreen(
                                 value = activeSleepVal,
                                 onValueChange = { newValue ->
                                     when (selectedMember) {
-                                        "Sami (You)" -> {
-                                            samiSleepLog = newValue
-                                            onSleepLogChange(newValue)
-                                        }
-                                        "Mom (Working Parent)" -> {
-                                            momSleepLog = newValue
-                                            prefs.edit().putFloat("mom_sleep_log", newValue).apply()
-                                        }
-                                        "Dad (Work Mode)" -> {
-                                            dadSleepLog = newValue
-                                            prefs.edit().putFloat("dad_sleep_log", newValue).apply()
-                                        }
+                                        "Sami (You)" -> samiSleepLog = newValue
+                                        "Mom (Working Parent)" -> momSleepLog = newValue
+                                        "Dad (Work Mode)" -> dadSleepLog = newValue
+                                    }
+                                },
+                                onValueChangeFinished = {
+                                    when (selectedMember) {
+                                        "Sami (You)" -> onSleepLogChange(samiSleepLog)
+                                        "Mom (Working Parent)" -> prefs.edit().putFloat("mom_sleep_log", momSleepLog).apply()
+                                        "Dad (Work Mode)" -> prefs.edit().putFloat("dad_sleep_log", dadSleepLog).apply()
                                     }
                                 },
                                 valueRange = 3.0f..10.0f,
