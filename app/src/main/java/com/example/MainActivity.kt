@@ -332,6 +332,15 @@ fun UsraApp() {
     mutableStateOf(prefs.getFloat("screen_time", 7.5f)) 
   }
 
+  LaunchedEffect(isUserAuthenticated) {
+    if (isUserAuthenticated && hasUsageStatsPermission(context)) {
+      val deviceTime = getDeviceScreenTime(context)
+      if (deviceTime > 0f) {
+          screenTime = deviceTime
+      }
+    }
+  }
+
   LaunchedEffect(Unit) {
     cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
     if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
@@ -624,6 +633,16 @@ fun UsraApp() {
                 },
                 leadingIcon = {
                   Icon(Icons.Default.Watch, contentDescription = null, tint = AccentGreen)
+                }
+              )
+              androidx.compose.material3.DropdownMenuItem(
+                text = { Text("Trigger SOS", color = Color(0xFFD32F2F)) },
+                onClick = {
+                  showPlusMenu = false
+                  SOSEmergencyManager.triggerEmergency()
+                },
+                leadingIcon = {
+                  Icon(Icons.Default.Warning, contentDescription = "Trigger SOS", tint = Color(0xFFD32F2F))
                 }
               )
             }
@@ -1252,6 +1271,32 @@ fun UsraAuthScreen(
           }
         }
 
+        Spacer(modifier = Modifier.height(24.dp))
+
+        Button(
+          onClick = {
+            prefs.edit()
+              .putBoolean("is_authenticated", true)
+              .putString("auth_user_email", "demo@usra.com")
+              .putString("user_name", "Sami")
+              .apply()
+            successMessage = "✨ Connected in Demo Mode!"
+            onAuthSuccess("demo@usra.com", "Sami")
+          },
+          colors = ButtonDefaults.buttonColors(
+            containerColor = Color.Transparent,
+            contentColor = MutedGray
+          ),
+          modifier = Modifier.fillMaxWidth()
+        ) {
+          Text(
+            text = "Demo Mode (Sami Account)",
+            style = MaterialTheme.typography.bodySmall.copy(
+              textDecoration = TextDecoration.Underline
+            )
+          )
+        }
+
         Spacer(modifier = Modifier.height(48.dp))
       }
     }
@@ -1466,63 +1511,6 @@ fun HomeDashboardView(
       }
     }
 
-    // Emergency Assistance Card
-    item {
-      val isEmergency = SOSEmergencyManager.isEmergencyTriggered.value
-      androidx.compose.material3.Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = androidx.compose.material3.CardDefaults.cardColors(containerColor = Color(0xFFFFF0F0)),
-        shape = RoundedCornerShape(24.dp)
-      ) {
-        Column(
-          modifier = Modifier
-            .fillMaxWidth()
-            .padding(24.dp),
-          horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-          Text(
-            text = "Emergency Assistance",
-            style = MaterialTheme.typography.titleMedium.copy(
-              fontWeight = FontWeight.Bold,
-              color = Color(0xFFD32F2F)
-            )
-          )
-          Spacer(modifier = Modifier.height(16.dp))
-          
-          if (isEmergency) {
-             Text(
-               text = "🚨 EMERGENCY TRIGGERED. Alerting Family Members.",
-               color = Color(0xFFD32F2F),
-               fontWeight = FontWeight.Bold,
-               textAlign = TextAlign.Center,
-               modifier = Modifier.padding(16.dp)
-             )
-          } else {
-            Box(
-              modifier = Modifier
-                .size(140.dp)
-                .clip(CircleShape)
-                .background(Color(0xFFD32F2F))
-                .pointerInput(Unit) {
-                  detectTapGestures(
-                    onLongPress = {
-                      SOSEmergencyManager.triggerEmergency()
-                    }
-                  )
-                },
-              contentAlignment = Alignment.Center
-            ) {
-              Text(
-                text = "🚨 Hold SOS\nfor 3 Seconds",
-                color = Color.White,
-                fontWeight = FontWeight.Bold,
-                textAlign = TextAlign.Center
-              )
-            }
-          }
-        }
-      }
-    }
 
     // Dynamic Burnout Evaluation Indicator Card
     item {
@@ -4817,15 +4805,6 @@ fun AccountScreen(
                   )
                 }
               }
-              Text(
-                text = "log out part is incomplete.....in works!!!",
-                color = MutedGray,
-                style = MaterialTheme.typography.bodySmall.copy(
-                  fontSize = 11.sp,
-                  fontStyle = androidx.compose.ui.text.font.FontStyle.Italic
-                ),
-                modifier = Modifier.padding(start = 4.dp)
-              )
             }
 
             HorizontalDivider(color = Color.LightGray.copy(alpha = 0.25f))
